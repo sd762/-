@@ -2363,54 +2363,65 @@
                         {activeTab === 'manual' && (
                             <div className="animate-fade-in bg-white rounded-3xl border p-8 max-w-4xl mx-auto shadow-sm space-y-8 leading-relaxed">
                                 <div className="border-b pb-6 text-center">
-                                    <h2 className="text-3xl font-black text-primary flex items-center justify-center gap-3"><IconManual /> 系統操作手冊 <span className="bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full">版本：V1.3 彈性擴充版</span></h2>
-                                    <p className="text-slate-500 mt-2 text-sm">歡迎使用清福技術考稽核系統！這是一套專為減輕一線主管行政負擔所設計的無紙化打分系統。為確保資料安全與操作順暢，請詳閱以下說明。</p>
+                                    <h2 className="text-3xl font-black text-primary flex items-center justify-center gap-3"><IconManual /> 系統操作手冊 <span className="bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full">版本：V1.4 完整版</span></h2>
+                                    <p className="text-slate-500 mt-2 text-sm">歡迎使用清福技術考稽核系統！這是一套專為減輕一線主管行政負擔所設計，具備強大打分、自動報表與數據搬家備份功能的系統。為確保系統操作順暢與資料安全，請詳閱以下說明。</p>
                                 </div>
 
                                 <section>
-                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-blue-50 inline-block px-4 py-2 rounded-lg border-l-4 border-blue-600">📱 第一部分：各模組功能與操作指南</h3>
-                                    <div className="space-y-6">
-                                        <div className="pl-4 border-l-4 border-blue-400">
-                                            <h4 className="font-bold text-blue-800 text-lg mb-2 flex items-center gap-2"><IconForm /> 【現場考評】模組：日常稽核打分</h4>
-                                            <ul className="list-disc pl-5 text-slate-600 space-y-2 text-sm">
-                                                <li><strong>選取與管理題庫</strong>：透過左上角的下拉選單選擇「主類」與「子類」，即可在右側選單挑選具體評核項目。您可以點擊「垃圾桶」刪除不需要的自訂表單，或點擊「匯入表單」上傳 Word (.docx) 或 Excel (.xlsx) 格式自建新題庫。</li>
-                                                <li><strong>基本資料填寫</strong>：「受測對象」為必填欄位。系統會自動帶入今日日期，右側「總得分」會隨打分結果即時自動計算。</li>
-                                                <li><strong>一般項目三態評分</strong>：每道題目支援「符合(滿分)」、「部分(自動帶入一半分數，可自訂給分)」與「不符(零分)」快速點選。</li>
-                                                <li><strong>雙指標項目（洗手考評）</strong>：若選擇「洗手遵從性及正確性」表單，系統會要求您先選擇「對應的護理技術」（如：抽痰），並自動生成對應的洗手時機。您需針對每個時機分別判定「行動(乾/濕/沒洗手)」與「步驟(確實/未確實)」。若選擇「其他」，可自訂新增多個洗手時機。</li>
-                                                <li><strong>備註與儲存</strong>：每題皆可輸入「情況紀錄」，最下方可輸入「總結改善與綜合建議」。確認無誤後點擊最下方大按鈕即可儲存。</li>
-                                            </ul>
-                                        </div>
-
-                                        <div className="pl-4 border-l-4 border-emerald-400">
-                                            <h4 className="font-bold text-emerald-800 text-lg mb-2 flex items-center gap-2"><IconHistory /> 【紀錄庫】模組：歷史資料夾與管理</h4>
-                                            <ul className="list-disc pl-5 text-slate-600 space-y-2 text-sm">
-                                                <li><strong>雙層資料夾檢視</strong>：歷史紀錄自動以「月份 &gt; 稽核項目」分層歸檔，點擊列表列即可展開或收合該層級的所有紀錄。</li>
-                                                <li><strong>快速篩選</strong>：利用表格上方的「所有月份」與「所有稽核項目」下拉選單，可快速尋找特定條件的紀錄。</li>
-                                                <li><strong>多重勾選與批次刪除</strong>：可直接勾選「整個月份」、「單一項目」或「單筆紀錄」，點擊右上角「批次刪除」一次清理錯誤資料。</li>
-                                                <li><strong>智慧匯出與匯入</strong>：勾選特定紀錄（或全選）後點擊「匯出報表」，系統會將其匯出成 Excel。若勾選的為「洗手考評」紀錄，系統會自動產出符合疾管署規範的「手部衛生遵從率及正確率統計報表」。一般考評項目將自動依「月份與評分項目」建立多個分頁，並匯出各分項成績及簽名欄位，方便紙本列印留存。點擊「匯入歷史」可將先前匯出的 Excel 備份檔讀回系統。</li>
-                                            </ul>
-                                        </div>
-
-                                        <div className="pl-4 border-l-4 border-purple-400">
-                                            <h4 className="font-bold text-purple-800 text-lg mb-2 flex items-center gap-2"><IconChart /> 【分析報表】模組：管理階層視覺化儀表板</h4>
-                                            <ul className="list-disc pl-5 text-slate-600 space-y-2 text-sm">
-                                                <li><strong>多維度管理欄位</strong>：內建顯示「被稽核人員」、「負責人」、「監測頻率」及「閾值」，完美對接機構評鑑要求。您可以直接點擊「監測頻率」欄位修改文字。</li>
-                                                <li><strong>排程提示（灰底區塊）</strong>：表格中的灰底色月份，代表該項目表定應執行的稽核月。</li>
-                                                <li><strong>雙指標成績顯示</strong>：表格內會以 <span className="text-blue-600 font-bold">遵從率/正確率</span>（例如 95/80）的格式顯示雙指標項目的系統自動平均成績。一般項目則顯示為單一百分比。</li>
-                                                <li><strong>手動數據覆蓋</strong>：您可以直接點擊表格月份的分數欄位，手動輸入紙本成績（雙指標請輸入 <code>90/85</code> 的格式）。手動輸入的分數會優先顯示，若將其刪除留空，則自動切換回系統依據紀錄庫計算的平均值。</li>
-                                                <li><strong>檢討改善分析</strong>：當月分數未達標時，可直接於表格右側輸入文字框紀錄原因與對策。</li>
-                                                <li><strong>隱藏與匯出</strong>：可懸停表格最右側點擊「眼睛圖示」暫時隱藏不需考核的項目（隱藏項目會顯示在表格下方，隨時可恢復）。點擊右上角「匯出分析總表」可將完整報表產出為 Excel。</li>
+                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-blue-50 inline-block px-4 py-2 rounded-lg border-l-4 border-blue-600 flex items-center gap-2"><IconForm /> 一、現場考評 (日常打分作業)</h3>
+                                    <div className="space-y-4 text-slate-700">
+                                        <p><strong>1. 題庫選擇與管理：</strong>利用左上方的下拉選單選擇「主類別」與「子類別」來挑選具體評分表單。點選「垃圾桶」可刪除不要的自訂表單，點擊「匯入表單」上傳自建的 Word 或 Excel 檔即可自動解析匯入題庫。</p>
+                                        <p><strong>2. 快速打分機制：</strong></p>
+                                        <ul className="list-disc pl-8 space-y-1">
+                                            <li><span className="text-green-600 font-bold">符合：</span>該題拿滿分。</li>
+                                            <li><span className="text-amber-500 font-bold">部分：</span>自動給一半的分，且展開「自訂分數」欄位讓您微調。</li>
+                                            <li><span className="text-red-500 font-bold">不符：</span>該題 0 分。</li>
+                                        </ul>
+                                        <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 mt-2 text-sm">
+                                            <p className="font-bold text-blue-800 flex items-center gap-1 mb-2"><IconForm /> 雙指標表單 (洗手遵從性及正確性) 特別說明：</p>
+                                            <ul className="list-disc pl-6 space-y-2">
+                                                <li><strong>獨立洗手時機：</strong>必須先點選對應的技術 (如: 抽痰、鼻胃管等)，系統會自動開展該技術標準的洗手時機。</li>
+                                                <li><strong>彈性新增時機：</strong>若技術選「其他」，您可以透過下方按鈕手動新增任意筆「時機一」至「時機五」，且可單獨刪除，完全符合現場實務狀況。</li>
+                                                <li><strong>飛梭填寫：</strong>若「遵從性(行動)」勾選了「沒洗手」，系統將自動鎖定正確性，避免邏輯矛盾。</li>
                                             </ul>
                                         </div>
                                     </div>
                                 </section>
 
                                 <section>
-                                    <h3 className="font-bold text-xl text-red-800 mb-4 bg-red-50 inline-block px-4 py-2 rounded-lg border border-red-200">⚠️ 第二部分：系統重大資料安全提醒 (新手必讀)</h3>
-                                    <div className="bg-red-50 p-5 rounded-xl border border-red-100 text-sm text-red-700 space-y-3 leading-relaxed">
-                                        <p><strong>1. 無雲端自動備份機制：</strong><br />本系統為「純前端單機版」，所有的考評紀錄、您匯入的新題庫、手填的成績，皆儲存在「您目前使用的這台裝置與當前的瀏覽器中」。</p>
-                                        <p><strong>2. 嚴禁清除瀏覽資料：</strong><br />請絕對不要「清除瀏覽器快取/Cookie」或使用「無痕模式」，否則所有資料將瞬間清空且無法救回！換一台電腦、換一個 Windows 帳號，或更換瀏覽器（例如從 Chrome 換到 Edge）也無法看到之前的資料。</p>
-                                        <p><strong>3. 養成匯出備份好習慣：</strong><br />強烈建議稽核人員定期（每週或每月）至「紀錄庫」點擊【匯出報表】備份原始明細，並至「分析報表」點擊【匯出分析總表】，將 Excel 檔案另存至機構的共用資料夾或雲端硬碟作為備份。若未來更換電腦，即可用【匯入歷史】將資料還原。</p>
+                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-emerald-50 inline-block px-4 py-2 rounded-lg border-l-4 border-emerald-600 flex items-center gap-2"><IconHistory /> 二、紀錄庫 (歷史資料與備份)</h3>
+                                    <div className="space-y-4 text-slate-700">
+                                        <p><strong>1. 階層分類檢索：</strong>所有歷史資料會自動依「月份 &gt; 稽核項目」歸檔，點擊列表列可展開收合，方便快速找查特定紀錄。</p>
+                                        <p><strong>2. 批次管理：</strong>可勾選「整個月份」、「單一項目」或「單筆資料」進行批次刪除，或單獨匯出成報表。</p>
+                                        <p><strong>3. 匯出報表與匯入 (搬家與備份)：</strong></p>
+                                        <ul className="list-disc pl-8 space-y-1">
+                                            <li>點擊上方「匯出所有資料 (備份)」，可將所有資料下載為 JSON 檔。</li>
+                                            <li><strong>智慧分析報表匯出：</strong>若勾選「洗手遵從性」紀錄匯出，系統會自動生成符合疾管署規範的洗手報表。</li>
+                                            <li>如需將資料搬移到另一台電腦，點擊「匯入資料 (搬家)」並上傳 JSON 檔，即可原機復原所有資料紀錄。</li>
+                                        </ul>
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-purple-50 inline-block px-4 py-2 rounded-lg border-l-4 border-purple-600 flex items-center gap-2"><IconChart /> 三、分析報表 (評鑑與表單產出)</h3>
+                                    <div className="space-y-4 text-slate-700">
+                                        <p><strong>1. 自動同步與跨機構篩選：</strong>系統會自動統計各月份成績。若資料散布在不同分館及機構，可於報表頁面頂部選擇特定機構或分館進行篩選。</p>
+                                        <p><strong>2. 彈性分析覆寫與邏輯：</strong></p>
+                                        <ul className="list-disc pl-8 space-y-1">
+                                            <li><strong>灰底提示：</strong>儲存格為「灰底區域」代表該月份為表定應受測月份。</li>
+                                            <li><strong>紙本成績覆寫：</strong>可點擊月份單元格，輸入紙本成績或覆寫系統成績（手動輸入成績將強制取代系統成績）。</li>
+                                            <li><strong>雙指標呈現：</strong>雙指標表單(如洗手考評)的系統成績會以「遵從率/正確率」兩項數據呈現。</li>
+                                        </ul>
+                                        <p><strong>3. 匯出分析總表：</strong>點選「匯出分析總表」，系統會將當前條件下的表格匯出為 Excel 報表，方便繳交評鑑資料。</p>
+                                    </div>
+                                </section>
+
+                                <section>
+                                    <h3 className="font-bold text-xl text-red-800 mb-4 bg-red-50 inline-block px-4 py-2 rounded-lg border border-red-200">⚠️ 四、系統重大資料安全提醒 (新手必讀)</h3>
+                                    <div className="bg-red-50/50 p-5 rounded-xl border border-red-100 text-sm text-red-700 space-y-4 leading-relaxed">
+                                        <p><strong>1. 定期備份最重要：</strong><br />本系統為純前端技術開發，資料皆儲存在「您當前使用的瀏覽器內」。所有紀錄、題庫、匯出資料等，如果「清除瀏覽器暫存或更換瀏覽器」就會消失。</p>
+                                        <p><strong>2. 預防資料遺失的做法：</strong><br />切勿清除瀏覽器的「清除瀏覽資料(清除Cookie)」，或使用「無痕模式」。這會讓所有資料在關閉瀏覽器後消失。</p>
+                                        <p><strong>3. 搬家或更換設備的正確做法：</strong><br />強烈建議每週定期將系統內資料(含題庫、紀錄)點擊右上角「匯出所有資料(備份)」按鈕進行備份，妥善保存 JSON 備份檔。當更換電腦或瀏覽器時，再點擊「匯入資料(搬家)」還原。</p>
                                     </div>
                                 </section>
                             </div>
