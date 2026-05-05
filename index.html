@@ -729,7 +729,7 @@
             const [filterTplMainCat, setFilterTplMainCat] = useState('照護品質類技術考');
             const [filterTplSubCat, setFilterTplSubCat] = useState('護理照服類');
             const [currentTemplateId, setCurrentTemplateId] = useState('');
-            const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], auditor: '', unitCategory: '', unit: '', target: '', score: '', score2: '', notes: '', auditName: '一般綜合稽核', isDual: false, technique: '' });
+            const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], auditor: '', unitCategory: '', unit: '', target: '', jobTitle: '', score: '', score2: '', notes: '', auditName: '一般綜合稽核', isDual: false, technique: '' });
             const [checklist, setChecklist] = useState([]);
             const [showPersonnelDropdown, setShowPersonnelDropdown] = useState(false);
             const targetInputRef = React.useRef(null);
@@ -1579,6 +1579,7 @@
                                 '稽核項目': r.auditName,
                                 '受稽單位': r.unit || '',
                                 '受測對象(姓名)': r.target,
+                                '職務': r.jobTitle || '',
                                 '稽核人員': r.auditor || '',
                                 '總評分': r.score
                             };
@@ -1932,7 +1933,7 @@
                                         </div>
                                     </div>
                                     <form onSubmit={handleSubmit} className="space-y-4">
-                                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                                        <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
                                             <div className="md:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase">日期</label><input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} className="w-full p-2 border border-slate-200 rounded text-sm" /></div>
                                             <div className="md:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase">稽核員</label><input type="text" placeholder="姓名" value={formData.auditor} onChange={e => setFormData({ ...formData, auditor: e.target.value })} className="w-full p-2 border border-slate-200 rounded text-sm" /></div>
                                             <div className="md:col-span-2">
@@ -1978,6 +1979,20 @@
                                                         </select>
                                                     )}
                                                 </div>
+                                            </div>
+                                            <div className="md:col-span-1 relative">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase">職務</label>
+                                                <input 
+                                                    list="jobTitlesList" type="text" placeholder="職務" 
+                                                    value={formData.jobTitle || ''} 
+                                                    onChange={e => setFormData({ ...formData, jobTitle: e.target.value })} 
+                                                    className="w-full p-2 border border-slate-200 rounded text-sm outline-none bg-white focus:border-primary" 
+                                                />
+                                                <datalist id="jobTitlesList">
+                                                    <option value="護理師" />
+                                                    <option value="照服員" />
+                                                    <option value="其他" />
+                                                </datalist>
                                             </div>
                                             <div className="md:col-span-1 relative">
                                                 <label className="text-[10px] font-bold text-slate-400 uppercase">受測對象</label>
@@ -2238,7 +2253,7 @@
                                                                                 {itEx && recs.map(r => (
                                                                                     <tr key={r.id} className={`hover:bg-blue-50/40 transition-colors ${selectedIds.has(r.id) ? 'bg-blue-50/60' : ''}`}>
                                                                                         <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => handleToggleSelect(r.id)} className="w-4 h-4 cursor-pointer" /></td>
-                                                                                        <td className="p-3 text-slate-500 pl-24">{r.date}</td><td className="p-3 font-black text-primary">{r.target}</td><td className="p-3 text-slate-600 truncate max-w-[150px]">{r.auditName}</td>
+                                                                                        <td className="p-3 text-slate-500 pl-24">{r.date}</td><td className="p-3 font-black text-primary">{r.target} {r.jobTitle && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded ml-1 font-normal">{r.jobTitle}</span>}</td><td className="p-3 text-slate-600 truncate max-w-[150px]">{r.auditName}</td>
                                                                                         <td className="p-3 text-center">
                                                                                             {r.isDual ? (
                                                                                                 <span className="inline-flex gap-1 text-[10px] font-black"><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">遵:{r.score}%</span><span className="bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded">正:{r.score2}%</span></span>
