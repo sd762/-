@@ -1801,10 +1801,51 @@
                 e.target.value = '';
             };
 
+            const handleExportBackup = () => {
+                const data = { records, reportSettings };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `清福稽核系統備份_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            };
+
+            const handleImportBackup = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const data = JSON.parse(evt.target.result);
+                        if (data.records && Array.isArray(data.records)) {
+                            setRecords(data.records);
+                            if (data.reportSettings) setReportSettings(data.reportSettings);
+                            showAlert('資料匯入成功！已完整還原歷史紀錄與設定。', '✅ 搬家完成');
+                        } else {
+                            showAlert('無效的備份檔案格式。');
+                        }
+                    } catch (err) {
+                        showAlert('檔案解析失敗，請確認這是否為系統產出的 JSON 備份檔。');
+                    }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+            };
+
             return (
                 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
                     <nav className="bg-primary text-white p-4 shadow-lg sticky top-0 z-50 flex justify-between items-center">
                         <div className="flex flex-col"><h1 className="font-bold text-lg tracking-tight">清福技術考稽核系統</h1><span className="text-[9px] bg-white/20 px-2 py-0.5 rounded self-start uppercase">V1.3 彈性擴充版</span></div>
+                        <div className="flex items-center gap-3">
+                            <label className="cursor-pointer bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded flex items-center gap-1 transition-colors">
+                                <IconImport /> 匯入資料 (搬家)
+                                <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+                            </label>
+                            <button onClick={handleExportBackup} className="bg-white text-primary hover:bg-slate-100 text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
+                                <IconDownload /> 匯出所有資料 (備份)
+                            </button>
+                        </div>
                     </nav>
 
                     <main className="max-w-7xl mx-auto w-full p-4 flex-1">
