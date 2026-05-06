@@ -10,6 +10,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -82,6 +83,7 @@
         const IconChevronDown = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>;
         const IconChevronRight = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>;
         const IconFolder = ({ color = "text-blue-500" }) => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className={color} stroke="none"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>;
+        const IconAdmin = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>;
 
         // --- 本地儲存管理 ---
         const Storage = {
@@ -97,6 +99,384 @@
             getSettings: () => JSON.parse(localStorage.getItem('audit_settings_v1') || '{}'),
             savePersonnel: (data) => localStorage.setItem('audit_personnel_v1', JSON.stringify(data)),
             getPersonnel: () => JSON.parse(localStorage.getItem('audit_personnel_v1') || '{}')
+        };
+
+        // --- Supabase 初始化 ---
+        const supabaseUrl = 'https://khkvqkbssngclojtxkuv.supabase.co';
+        const supabaseKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
+        // 使用 supabase.createClient 而非 window.supabase.createClient 並改名避免衝突
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+        // --- 登入組件 ---
+        const Login = () => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError(null);
+                const { error } = await supabaseClient.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+                if (error) {
+                    setError('登入失敗，請檢查電子郵件與密碼');
+                }
+                setLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                    <div className="bg-white p-8 rounded-3xl shadow-lg w-full max-w-md border border-slate-100">
+                        <div className="text-center mb-8">
+                            <h1 className="text-2xl font-black text-slate-800 mb-2">清福技術考稽核系統</h1>
+                            <p className="text-slate-500 text-sm">請登入以繼續操作</p>
+                        </div>
+                        {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">電子郵件 (Email)</label>
+                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                    placeholder="your@email.com" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">密碼 (Password)</label>
+                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
+                                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                    placeholder="••••••••" />
+                            </div>
+                            <button type="submit" disabled={loading}
+                                className="w-full bg-primary hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50">
+                                {loading ? '登入中...' : '登入系統'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 系統後台組件 ---
+        const AdminPanel = () => {
+            const [serviceKey, setServiceKey] = useState('');
+            const [isAdminAuth, setIsAdminAuth] = useState(false);
+            const [adminClient, setAdminClient] = useState(null);
+            const [users, setUsers] = useState([]);
+            const [loadingUsers, setLoadingUsers] = useState(false);
+            const [error, setError] = useState(null);
+            
+            const [newEmail, setNewEmail] = useState('');
+            const [newPassword, setNewPassword] = useState('');
+            const [creating, setCreating] = useState(false);
+
+            const handleUnlock = async (e) => {
+                e.preventDefault();
+                setError(null);
+                setLoadingUsers(true);
+                
+                try {
+                    if (!serviceKey || serviceKey.length < 20) {
+                        throw new Error("請輸入有效的 Service Role Key");
+                    }
+
+                    // 直接使用 fetch 測試金鑰是否有效 (獲取用戶列表)
+                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+                        headers: {
+                            'apikey': serviceKey,
+                            'Authorization': `Bearer ${serviceKey}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        const errData = await response.json();
+                        throw new Error(errData.msg || errData.error || "金鑰驗證失敗");
+                    }
+                    
+                    const data = await response.json();
+                    setUsers(data.users || []);
+                    setIsAdminAuth(true);
+                } catch (err) {
+                    console.error("handleUnlock error:", err);
+                    setError('驗證失敗：' + err.message);
+                } finally {
+                    setLoadingUsers(false);
+                }
+            };
+
+            const fetchUsers = async () => {
+                setLoadingUsers(true);
+                try {
+                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+                        headers: {
+                            'apikey': serviceKey,
+                            'Authorization': `Bearer ${serviceKey}`
+                        }
+                    });
+                    const data = await response.json();
+                    if (data.users) setUsers(data.users);
+                } catch (err) {
+                    setError('更新列表失敗');
+                }
+                setLoadingUsers(false);
+            };
+
+            const handleCreateUser = async (e) => {
+                e.preventDefault();
+                setCreating(true);
+                setError(null);
+                
+                try {
+                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': serviceKey,
+                            'Authorization': `Bearer ${serviceKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: newEmail,
+                            password: newPassword,
+                            email_confirm: true
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.msg || data.error || "建立失敗");
+
+                    setNewEmail('');
+                    setNewPassword('');
+                    fetchUsers();
+                } catch (err) {
+                    setError('建立失敗：' + err.message);
+                }
+                setCreating(false);
+            };
+
+            const handleDeleteUser = async (userId) => {
+                if (!window.confirm('確定要永久刪除此帳號嗎？')) return;
+                setError(null);
+                
+                try {
+                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'apikey': serviceKey,
+                            'Authorization': `Bearer ${serviceKey}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.msg || data.error || "刪除失敗");
+                    }
+                    fetchUsers();
+                } catch (err) {
+                    setError('刪除失敗：' + err.message);
+                }
+            };
+
+            const [syncStatus, setSyncStatus] = useState({ loading: false, message: '' });
+
+            const handleSyncToCloud = async () => {
+                if (!window.confirm('確定要把目前這台電腦的所有資料（紀錄、題庫、名單）同步到雲端嗎？\n這會讓其他登入者也能看到這些資料。')) return;
+                setSyncStatus({ loading: true, message: '同步中...' });
+                
+                try {
+                    // 1. 同步人員名單
+                    const localPersonnel = Storage.getPersonnel();
+                    const personnelToInsert = [];
+                    Object.entries(localPersonnel).forEach(([cat, names]) => {
+                        names.forEach(name => personnelToInsert.push({ category: cat, name }));
+                    });
+                    
+                    if (personnelToInsert.length > 0) {
+                        await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
+                            method: 'POST',
+                            headers: {
+                                'apikey': serviceKey,
+                                'Authorization': `Bearer ${serviceKey}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'resolution=merge-duplicates'
+                            },
+                            body: JSON.stringify(personnelToInsert)
+                        });
+                    }
+
+                    // 2. 同步題庫 (Templates)
+                    const localTemplates = Storage.getTemplates();
+                    if (localTemplates.length > 0) {
+                        await fetch(`${supabaseUrl}/rest/v1/audit_templates`, {
+                            method: 'POST',
+                            headers: {
+                                'apikey': serviceKey,
+                                'Authorization': `Bearer ${serviceKey}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'resolution=merge-duplicates'
+                            },
+                            body: JSON.stringify(localTemplates.map(t => ({
+                                id: t.id,
+                                name: t.name,
+                                main_category: t.mainCategory,
+                                sub_category: t.subCategory,
+                                target_staff: t.targetStaff,
+                                responsible: t.responsible,
+                                frequency: t.frequency,
+                                schedule: t.schedule,
+                                threshold: t.threshold,
+                                is_dual: !!t.isDual,
+                                items: t.items,
+                                is_custom: !DEFAULT_TEMPLATES.some(dt => dt.id === t.id)
+                            })))
+                        });
+                    }
+
+                    // 3. 同步紀錄 (Records)
+                    const localRecords = Storage.getRecords();
+                    if (localRecords.length > 0) {
+                        await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                            method: 'POST',
+                            headers: {
+                                'apikey': serviceKey,
+                                'Authorization': `Bearer ${serviceKey}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(localRecords.map(r => ({
+                                audit_date: r.date,
+                                template_id: r.templateId,
+                                audit_name: r.auditName,
+                                unit_category: r.unitCategory,
+                                unit: r.unit,
+                                target: r.target,
+                                job_title: r.jobTitle,
+                                auditor: r.auditor,
+                                score: r.score,
+                                score2: r.score2,
+                                notes: r.notes,
+                                is_dual: !!r.isDual,
+                                technique: r.technique,
+                                checklist: r.checklist
+                            })))
+                        });
+                    }
+
+                    setSyncStatus({ loading: false, message: '✅ 同步完成！所有資料已上傳至雲端。' });
+                } catch (err) {
+                    console.error("Sync error:", err);
+                    setSyncStatus({ loading: false, message: '❌ 同步失敗：' + err.message });
+                }
+            };
+
+            if (!isAdminAuth) {
+                return (
+                    <div className="animate-fade-in max-w-md mx-auto bg-white p-8 rounded-2xl shadow-sm border border-red-100 mt-10">
+                        <div className="flex items-center gap-3 mb-6 text-red-600">
+                            <IconAdmin />
+                            <h2 className="text-xl font-bold">系統後台登入</h2>
+                        </div>
+                        <p className="text-sm text-slate-500 mb-6">請輸入 Supabase 的 <code className="bg-slate-100 px-1 rounded">service_role</code> 金鑰以解鎖後台管理權限。此金鑰僅暫存於當前瀏覽器中。</p>
+                        
+                        {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
+                        
+                        <form onSubmit={handleUnlock} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Service Role Key</label>
+                                <input type="password" value={serviceKey} onChange={e => setServiceKey(e.target.value)} required
+                                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all font-mono text-xs"
+                                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+                            </div>
+                            <button type="submit" disabled={loadingUsers}
+                                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50">
+                                {loadingUsers ? '驗證中...' : '解鎖後台'}
+                            </button>
+                        </form>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="animate-fade-in space-y-6">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <div className="flex justify-between items-center border-b pb-4 mb-4">
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><IconAdmin /> 系統後台 - 帳號管理</h2>
+                            <button onClick={() => setIsAdminAuth(false)} className="text-sm text-slate-500 hover:text-red-500">鎖定並登出後台</button>
+                        </div>
+
+                        {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+                            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-6">
+                                <div>
+                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">👤 新增人員帳號</h3>
+                                    <form onSubmit={handleCreateUser} className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">電子郵件</label>
+                                            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} required className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">密碼 (至少6碼)</label>
+                                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
+                                        </div>
+                                        <button type="submit" disabled={creating} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-700 disabled:opacity-50">
+                                            {creating ? '建立中...' : '建立帳號'}
+                                        </button>
+                                    </form>
+                                </div>
+
+                                <div className="pt-6 border-t border-slate-100">
+                                    <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">☁️ 雲端資料同步</h3>
+                                    <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">將此電腦目前的「稽核紀錄、題庫、人員名單」上傳至雲端，供所有登入者共享。</p>
+                                    <button onClick={handleSyncToCloud} disabled={syncStatus.loading}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm">
+                                        {syncStatus.loading ? '同步中...' : <><IconImport /> 同步所有資料至雲端</>}
+                                    </button>
+                                    {syncStatus.message && (
+                                        <p className={`mt-3 text-xs font-bold text-center ${syncStatus.message.includes('❌') ? 'text-red-500' : 'text-emerald-600'}`}>
+                                            {syncStatus.message}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="font-bold text-slate-700">使用者列表 ({users.length})</h3>
+                                    <button onClick={fetchUsers} disabled={loadingUsers} className="text-xs bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-bold text-slate-600">重新整理</button>
+                                </div>
+                                <div className="bg-white border rounded-xl overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-100 text-slate-600 sticky top-0">
+                                            <tr>
+                                                <th className="p-3 font-bold">Email</th>
+                                                <th className="p-3 font-bold">建立時間</th>
+                                                <th className="p-3 font-bold text-center">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {users.map(u => (
+                                                <tr key={u.id} className="hover:bg-slate-50">
+                                                    <td className="p-3 text-slate-800">{u.email}</td>
+                                                    <td className="p-3 text-slate-500 text-xs">{new Date(u.created_at).toLocaleString()}</td>
+                                                    <td className="p-3 text-center">
+                                                        <button onClick={() => handleDeleteUser(u.id)} className="text-red-400 hover:text-red-600 p-1 bg-red-50 hover:bg-red-100 rounded flex mx-auto">
+                                                            <IconTrash />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {users.length === 0 && !loadingUsers && (
+                                                <tr><td colSpan="3" className="p-6 text-center text-slate-400">尚無使用者資料</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
         };
 
         const MAIN_CATEGORIES = ['照護品質類技術考', '儀器操作類技術考'];
@@ -711,6 +1091,8 @@
         };
 
         const App = () => {
+            const [session, setSession] = useState(null);
+            const [loadingAuth, setLoadingAuth] = useState(true);
             const [activeTab, setActiveTab] = useState('form');
             const [records, setRecords] = useState(() => Storage.getRecords());
             const [reportSettings, setReportSettings] = useState(() => Storage.getSettings());
@@ -728,6 +1110,47 @@
             const [expandedFolders, setExpandedFolders] = useState(new Set());
             const [filterTplMainCat, setFilterTplMainCat] = useState('照護品質類技術考');
             const [filterTplSubCat, setFilterTplSubCat] = useState('護理照服類');
+
+            useEffect(() => {
+                let isMounted = true;
+                
+                // 設定 3 秒強制解除 loading (以防 Supabase 卡住)
+                const fallbackTimeout = setTimeout(() => {
+                    if (isMounted) setLoadingAuth(false);
+                }, 3000);
+
+                try {
+                    supabaseClient.auth.getSession().then(({ data: { session }, error }) => {
+                        if (error) console.error("Session error:", error);
+                        if (isMounted) {
+                            setSession(session || null);
+                            setLoadingAuth(false);
+                            clearTimeout(fallbackTimeout);
+                        }
+                    }).catch(err => {
+                        console.error("Auth getSession error:", err);
+                        if (isMounted) {
+                            setLoadingAuth(false);
+                            clearTimeout(fallbackTimeout);
+                        }
+                    });
+
+                    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+                        if (isMounted) setSession(session || null);
+                    });
+
+                    return () => {
+                        isMounted = false;
+                        clearTimeout(fallbackTimeout);
+                        if (subscription) subscription.unsubscribe();
+                    };
+                } catch (err) {
+                    console.error("Supabase init error:", err);
+                    setLoadingAuth(false);
+                    clearTimeout(fallbackTimeout);
+                    return () => { isMounted = false; clearTimeout(fallbackTimeout); };
+                }
+            }, []);
             const [currentTemplateId, setCurrentTemplateId] = useState('');
             const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], auditor: '', unitCategory: '', unit: '', target: '', jobTitle: '', score: '', score2: '', notes: '', auditName: '一般綜合稽核', isDual: false, technique: '' });
             const [checklist, setChecklist] = useState([]);
@@ -762,7 +1185,55 @@
                 }
             }, []);
 
-            useEffect(() => { Storage.saveRecords(records); }, [records]);
+            const loadAllDataFromCloud = async () => {
+                if (!session) return;
+                console.log("正在從雲端讀取資料...");
+                
+                try {
+                    // 1. 讀取紀錄 (只讀取自己的，或根據需求調整)
+                    const { data: recs, error: e1 } = await supabaseClient.from('audit_records').select('*').order('audit_date', { ascending: false });
+                    if (!e1 && recs) {
+                        setRecords(recs.map(r => ({
+                            id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
+                            unitCategory: r.unit_category, unit: r.unit, target: r.target, jobTitle: r.job_title,
+                            auditor: r.auditor, score: r.score, score2: r.score2, notes: r.notes,
+                            isDual: r.is_dual, technique: r.technique, checklist: r.checklist
+                        })));
+                    }
+
+                    // 2. 讀取題庫
+                    const { data: tpls, error: e2 } = await supabaseClient.from('audit_templates').select('*');
+                    if (!e2 && tpls && tpls.length > 0) {
+                        setTemplates(tpls.map(t => ({
+                            id: t.id, name: t.name, mainCategory: t.main_category, subCategory: t.sub_category,
+                            targetStaff: t.target_staff, responsible: t.responsible, frequency: t.frequency,
+                            schedule: t.schedule, threshold: t.threshold, isDual: t.is_dual, items: t.items
+                        })));
+                    }
+
+                    // 3. 讀取人員名單
+                    const { data: pers, error: e3 } = await supabaseClient.from('audit_personnel').select('*');
+                    if (!e3 && pers) {
+                        const pMap = {};
+                        pers.forEach(p => {
+                            if (!pMap[p.category]) pMap[p.category] = [];
+                            pMap[p.category].push(p.name);
+                        });
+                        if (Object.keys(pMap).length > 0) setPersonnelData(pMap);
+                    }
+                } catch (err) {
+                    console.error("載入雲端資料失敗:", err);
+                }
+            };
+
+            useEffect(() => {
+                if (session) loadAllDataFromCloud();
+            }, [session]);
+
+            useEffect(() => { 
+                Storage.saveRecords(records);
+                // 如果已登入，這裡可以實作自動同步邏輯，但為了效能建議在新增時才同步
+            }, [records]);
             useEffect(() => { Storage.saveTemplates(templates); }, [templates]);
             useEffect(() => { Storage.saveSettings(reportSettings); }, [reportSettings]);
             useEffect(() => { Storage.savePersonnel(personnelData); }, [personnelData]);
@@ -1162,11 +1633,37 @@
                 setSelectedIds(newIds);
             };
 
-            const handleBatchDelete = () => {
+            const handleBatchDelete = async () => {
                 if (selectedIds.size === 0) return showAlert('請先勾選資料！');
-                showConfirm(`確定要刪除選取的 ${selectedIds.size} 筆資料？`, () => {
+                showConfirm(`確定要刪除選取的 ${selectedIds.size} 筆資料？`, async () => {
+                    const idsToDelete = Array.from(selectedIds);
+                    
+                    // 如果已登入，同步刪除雲端資料
+                    if (session) {
+                        try {
+                            const { error } = await supabaseClient.from('audit_records').delete().in('id', idsToDelete);
+                            if (error) console.error("雲端刪除失敗:", error);
+                        } catch (err) {
+                            console.error("雲端刪除錯誤:", err);
+                        }
+                    }
+
                     setRecords(prev => prev.filter(r => !selectedIds.has(r.id)));
                     setSelectedIds(new Set());
+                });
+            };
+
+            const handleDeleteSingle = async (id) => {
+                showConfirm('確定要刪除這筆資料？', async () => {
+                    if (session) {
+                        try {
+                            const { error } = await supabaseClient.from('audit_records').delete().eq('id', id);
+                            if (error) console.error("雲端刪除失敗:", error);
+                        } catch (err) {
+                            console.error("雲端刪除錯誤:", err);
+                        }
+                    }
+                    setRecords(prev => prev.filter(x => x.id !== id));
                 });
             };
 
@@ -1684,7 +2181,7 @@
                 setChecklist(nl);
             };
 
-            const handleSubmit = (e) => {
+            const handleSubmit = async (e) => {
                 e.preventDefault();
                 if (!formData.target) return showAlert('請輸入受測對象姓名！');
                 if (formData.score === '') return showAlert('尚有計分未完成！');
@@ -1692,8 +2189,41 @@
                 if (formData.isDual && checklist.length === 0) return showAlert('至少需新增一個洗手時機！');
 
                 const finalAuditName = formData.isDual ? `${formData.auditName} (${formData.technique})` : formData.auditName;
-                const newRec = { ...formData, auditName: finalAuditName, id: Date.now().toString() + Math.random().toString(36).substr(2, 5), checklist };
+                const newRec = { 
+                    ...formData, 
+                    auditName: finalAuditName, 
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5), 
+                    checklist 
+                };
+
+                // 更新本地狀態
                 setRecords(prev => [newRec, ...prev]);
+
+                // 如果已登入，同步到雲端
+                if (session) {
+                    try {
+                        const { error } = await supabaseClient.from('audit_records').insert([{
+                            audit_date: newRec.date,
+                            template_id: currentTemplateId,
+                            audit_name: newRec.auditName,
+                            unit_category: newRec.unitCategory,
+                            unit: newRec.unit,
+                            target: newRec.target,
+                            job_title: newRec.jobTitle,
+                            auditor: newRec.auditor,
+                            score: newRec.score,
+                            score2: newRec.score2,
+                            notes: newRec.notes,
+                            is_dual: !!newRec.isDual,
+                            technique: newRec.technique,
+                            checklist: newRec.checklist,
+                            user_id: session.user.id
+                        }]);
+                        if (error) console.error("同步至雲端失敗:", error);
+                    } catch (err) {
+                        console.error("雲端存檔錯誤:", err);
+                    }
+                }
 
                 setFormData(p => ({ ...p, target: '', score: '', score2: '', notes: '' }));
                 if (formData.isDual) setChecklist(checklist.map(i => ({ ...i, comp: null, acc: null, note: '' })));
@@ -1848,6 +2378,19 @@
                 e.target.value = '';
             };
 
+            if (loadingAuth) {
+                return (
+                    <div className="flex flex-col items-center justify-center min-h-screen text-slate-400 bg-slate-50">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+                        系統載入中，請稍候...
+                    </div>
+                );
+            }
+
+            if (!session) {
+                return <Login />;
+            }
+
             return (
                 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
                     <nav className="bg-primary text-white p-4 shadow-lg sticky top-0 z-50 flex justify-between items-center">
@@ -1860,6 +2403,9 @@
                             <button onClick={handleExportBackup} className="bg-white text-primary hover:bg-slate-100 text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
                                 <IconDownload /> 匯出所有資料 (備份)
                             </button>
+                            <button onClick={() => supabaseClient.auth.signOut()} className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm ml-2">
+                                登出
+                            </button>
                         </div>
                     </nav>
 
@@ -1869,6 +2415,7 @@
                             <button onClick={() => setActiveTab('history')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'history' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconHistory /> 紀錄庫</button>
                             <button onClick={() => setActiveTab('chart')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'chart' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconChart /> 分析報表</button>
                             <button onClick={() => setActiveTab('manual')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'manual' ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconManual /> 使用手冊</button>
+                            <button onClick={() => setActiveTab('admin')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'admin' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconAdmin /> 系統後台</button>
                         </div>
 
                         {showHistoryImportModal && (
@@ -2275,7 +2822,7 @@
                                                                                                 <span className={`inline-block px-2 py-1 rounded-full font-black ${r.score < 80 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>{r.score}</span>
                                                                                             )}
                                                                                         </td>
-                                                                                        <td className="p-3 text-center"><button onClick={() => showConfirm('確定刪除？', () => setRecords(prev => prev.filter(x => x.id !== r.id)))} className="text-red-300 hover:text-red-600 transition-colors"><IconTrash /></button></td>
+                                                                                        <td className="p-3 text-center"><button onClick={() => handleDeleteSingle(r.id)} className="text-red-300 hover:text-red-600 transition-colors"><IconTrash /></button></td>
                                                                                     </tr>
                                                                                 ))}
                                                                             </React.Fragment>
@@ -2425,6 +2972,10 @@
                                     </div>
                                 </section>
                             </div>
+                        )}
+
+                        {activeTab === 'admin' && (
+                            <AdminPanel />
                         )}
                     </main>
 
