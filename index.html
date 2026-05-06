@@ -130,19 +130,30 @@
             const [password, setPassword] = useState('');
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
+            const [resetMode, setResetMode] = useState(false);
+            const [resetMsg, setResetMsg] = useState('');
+            const [resetLoading, setResetLoading] = useState(false);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
                 setLoading(true);
                 setError(null);
-                const { error } = await supabaseClient.auth.signInWithPassword({
-                    email,
-                    password,
-                });
-                if (error) {
-                    setError('登入失敗，請檢查電子郵件與密碼');
-                }
+                const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) setError('登入失敗，請檢查電子郵件與密碼');
                 setLoading(false);
+            };
+
+            const handleResetPassword = async (e) => {
+                e.preventDefault();
+                if (!email) { setResetMsg('請先輸入您的電子郵件地址'); return; }
+                setResetLoading(true);
+                setResetMsg('');
+                const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+                    redirectTo: window.location.href
+                });
+                if (error) setResetMsg('發送失敗：' + error.message);
+                else setResetMsg('✅ 密碼重設郵件已發送！請檢查您的信箱（1分鐘內），點擊郵件中的連結即可重設密碼。');
+                setResetLoading(false);
             };
 
             return (
@@ -150,27 +161,60 @@
                     <div className="bg-white p-8 rounded-3xl shadow-lg w-full max-w-md border border-slate-100">
                         <div className="text-center mb-8">
                             <h1 className="text-2xl font-black text-slate-800 mb-2">清福技術考稽核系統</h1>
-                            <p className="text-slate-500 text-sm">請登入以繼續操作</p>
+                            <p className="text-slate-500 text-sm">{resetMode ? '輸入您的註冊郵件，系統將發送密碼重設連結' : '請登入以繼續操作'}</p>
                         </div>
-                        {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
-                        <form onSubmit={handleLogin} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">電子郵件 (Email)</label>
-                                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                    placeholder="your@email.com" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">密碼 (Password)</label>
-                                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
-                                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                                    placeholder="••••••••" />
-                            </div>
-                            <button type="submit" disabled={loading}
-                                className="w-full bg-primary hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50">
-                                {loading ? '登入中...' : '登入系統'}
-                            </button>
-                        </form>
+
+                        {!resetMode ? (
+                            <>
+                                {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
+                                <form onSubmit={handleLogin} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">電子郵件 (Email)</label>
+                                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                                            className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                            placeholder="your@email.com" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">密碼 (Password)</label>
+                                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
+                                            className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                                            placeholder="••••••••" />
+                                    </div>
+                                    <button type="submit" disabled={loading}
+                                        className="w-full bg-primary hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50">
+                                        {loading ? '登入中...' : '登入系統'}
+                                    </button>
+                                </form>
+                                <div className="mt-5 text-center">
+                                    <button onClick={() => { setResetMode(true); setError(null); setResetMsg(''); }}
+                                        className="text-sm text-blue-500 hover:text-blue-700 hover:underline transition-colors">
+                                        忘記密碼？點擊重設
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                {resetMsg && <div className={`p-3 rounded-lg text-sm mb-4 font-bold leading-relaxed ${resetMsg.startsWith('✅') ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-500'}`}>{resetMsg}</div>}
+                                <form onSubmit={handleResetPassword} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-1">註冊電子郵件</label>
+                                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                                            className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                                            placeholder="your@email.com" />
+                                    </div>
+                                    <button type="submit" disabled={resetLoading}
+                                        className="w-full bg-primary hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50">
+                                        {resetLoading ? '發送中...' : '發送密碼重設郵件'}
+                                    </button>
+                                </form>
+                                <div className="mt-5 text-center">
+                                    <button onClick={() => { setResetMode(false); setResetMsg(''); }}
+                                        className="text-sm text-slate-500 hover:text-slate-700 hover:underline transition-colors">
+                                        ← 返回登入
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             );
@@ -1333,6 +1377,7 @@
             
             const [showPwdModal, setShowPwdModal] = useState(false);
             const [newPwd, setNewPwd] = useState('');
+            const [confirmPwd, setConfirmPwd] = useState('');
             const [pwdError, setPwdError] = useState('');
             const [pwdMsg, setPwdMsg] = useState('');
 
@@ -3305,27 +3350,47 @@
                             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 border border-slate-100">
                                 <h3 className="font-bold text-lg mb-4 text-slate-800">變更密碼</h3>
                                 <div className="space-y-4">
-                                    <input 
-                                        type="password" 
-                                        placeholder="輸入新密碼 (至少 6 碼)" 
-                                        value={newPwd} 
-                                        onChange={e => setNewPwd(e.target.value)} 
-                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-primary transition-colors text-sm"
-                                    />
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">新密碼 (至少6碼)</label>
+                                        <input
+                                            type="password"
+                                            placeholder="輸入新密碼"
+                                            value={newPwd}
+                                            onChange={e => setNewPwd(e.target.value)}
+                                            className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-primary transition-colors text-sm"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">確認新密碼</label>
+                                        <input
+                                            type="password"
+                                            placeholder="再輸入一次密碼"
+                                            value={confirmPwd}
+                                            onChange={e => setConfirmPwd(e.target.value)}
+                                            className={`w-full p-3 border rounded-lg outline-none focus:border-primary transition-colors text-sm ${confirmPwd && confirmPwd !== newPwd ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
+                                        />
+                                        {confirmPwd && confirmPwd !== newPwd && (
+                                            <p className="text-red-500 text-xs mt-1 font-bold">✕ 兩次密碼不一致</p>
+                                        )}
+                                        {confirmPwd && confirmPwd === newPwd && newPwd.length >= 6 && (
+                                            <p className="text-emerald-600 text-xs mt-1 font-bold">✓ 密碼符合</p>
+                                        )}
+                                    </div>
                                     {pwdError && <p className="text-red-500 text-xs font-bold">{pwdError}</p>}
                                     {pwdMsg && <p className="text-emerald-600 text-xs font-bold">{pwdMsg}</p>}
-                                    <div className="flex gap-2 justify-end mt-6">
-                                        <button onClick={() => setShowPwdModal(false)} className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">取消</button>
+                                    <div className="flex gap-2 justify-end mt-2">
+                                        <button onClick={() => { setShowPwdModal(false); setNewPwd(''); setConfirmPwd(''); setPwdError(''); setPwdMsg(''); }} className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">取消</button>
                                         <button onClick={async () => {
                                             if (newPwd.length < 6) { setPwdError('密碼長度至少需要 6 碼'); return; }
+                                            if (newPwd !== confirmPwd) { setPwdError('兩次密碼不一致，請重新輸入'); return; }
                                             setPwdError(''); setPwdMsg('');
                                             const { error } = await supabaseClient.auth.updateUser({ password: newPwd });
                                             if (error) setPwdError('密碼變更失敗: ' + error.message);
                                             else {
                                                 setPwdMsg('✅ 密碼變更成功！即將關閉...');
-                                                setTimeout(() => { setShowPwdModal(false); setNewPwd(''); setPwdMsg(''); }, 1500);
+                                                setTimeout(() => { setShowPwdModal(false); setNewPwd(''); setConfirmPwd(''); setPwdMsg(''); }, 1500);
                                             }
-                                        }} className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold shadow hover:bg-blue-700 transition-colors">確認變更</button>
+                                        }} disabled={!newPwd || !confirmPwd || newPwd !== confirmPwd || newPwd.length < 6} className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold shadow hover:bg-blue-700 transition-colors disabled:opacity-40">確認變更</button>
                                     </div>
                                 </div>
                             </div>
