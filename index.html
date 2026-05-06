@@ -524,10 +524,12 @@
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-1">機構/單位</label>
-                                            <select value={newUnit} onChange={e => setNewUnit(e.target.value)} required className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400 bg-white">
+                                            <select value={ALL_UNITS.includes(newUnit) ? newUnit : (newUnit ? '__custom__' : '')} onChange={e => { if (e.target.value !== '__custom__') setNewUnit(e.target.value); }} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400 bg-white mb-1">
                                                 <option value="">請選擇機構名稱</option>
                                                 {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                                <option value="__custom__">✔ 手動輸入其他名稱...</option>
                                             </select>
+                                            <input type="text" value={newUnit} onChange={e => setNewUnit(e.target.value)} placeholder="手動輸入或從上方選擇..." className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
                                         </div>
                                         <button type="submit" disabled={creating} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-700 disabled:opacity-50">
                                             {creating ? '建立中...' : '建立帳號'}
@@ -624,10 +626,20 @@
                         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 border border-slate-100">
                             <h3 className="font-bold text-slate-800 text-lg">✏️ 修改所屬機構</h3>
                             <p className="text-xs text-slate-500">{editUnitModal.userEmail}</p>
-                            <select value={editUnitModal.value} onChange={e => setEditUnitModal(m => ({ ...m, value: e.target.value }))} className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm bg-white">
+                            <select
+                                value={ALL_UNITS.includes(editUnitModal.value) ? editUnitModal.value : (editUnitModal.value ? '__custom__' : '')}
+                                onChange={e => { if (e.target.value !== '__custom__') setEditUnitModal(m => ({ ...m, value: e.target.value })); }}
+                                className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm bg-white">
                                 <option value="">-- 清除（無機構）--</option>
                                 {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                <option value="__custom__">✔ 手動輸入其他名稱...</option>
                             </select>
+                            <input
+                                type="text"
+                                value={editUnitModal.value}
+                                onChange={e => setEditUnitModal(m => ({ ...m, value: e.target.value }))}
+                                placeholder="手動輸入或從上方選擇..."
+                                className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm" />
                             <div className="flex gap-3 pt-2">
                                 <button onClick={() => setEditUnitModal({ open: false, userId: null, userEmail: '', value: '' })} className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50">取消</button>
                                 <button onClick={handleEditUnitSave} disabled={loadingUsers} className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50">{loadingUsers ? '儲存中...' : '確認儲存'}</button>
