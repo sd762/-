@@ -1090,6 +1090,28 @@
             return str;
         };
 
+        const EMAIL_TO_UNIT_MAP = {
+            'hok6@hok2.com.tw': '清山養老院',
+            'hok3@hok2.com.tw': '清心養老院',
+            'hok7@hok1.com.tw': '清日養老院',
+            'hok11@hok3.com.tw': '清水養老院',
+            'hok4@hok2.com.tw': '清平養老院',
+            'hok8@hok1.com.tw': '清安養老院',
+            'hok5@hok2.com.tw': '清春養老院',
+            'hok9@hok3.com.tw': '清泉養老院',
+            'hok15@hok6.com.tw': '清風養老院',
+            'hok2@hok2.com.tw': '清氣養老院',
+            'hok13@hok6.com.tw': '清涼養老院',
+            'hok12@hok6.com.tw': '清清養老院',
+            'hok14@hok6.com.tw': '清景養老院',
+            'hok10@hok3.com.tw': '清照養老院',
+            'hok16@hok6.com.tw': '清福一館',
+            'hok17@hok6.com.tw': '清福二館',
+            'hok18@hok6.com.tw': '清福三館',
+            'hok1@hok2.com.tw': '清福養老院',
+            'hok2f@hok6.com.tw': '清福護理之家'
+        };
+
         const App = () => {
             const [session, setSession] = useState(null);
             const [loadingAuth, setLoadingAuth] = useState(true);
@@ -1163,7 +1185,12 @@
             const [pwdMsg, setPwdMsg] = useState('');
 
             const userRole = session?.user?.user_metadata?.role;
-            const userUnit = session?.user?.user_metadata?.unit;
+            let userUnit = session?.user?.user_metadata?.unit;
+            
+            if (!userUnit && session?.user?.email) {
+                userUnit = EMAIL_TO_UNIT_MAP[session.user.email.toLowerCase()] || '';
+            }
+
             const isAdmin = userRole === 'admin' || session?.user?.email === 'sd@hok6.com.tw';
             const isSuperAdmin = session?.user?.email === 'sd@hok6.com.tw';
             const displayRole = isSuperAdmin ? '系統開發者' : (isAdmin ? '系統管理員' : '機構帳號');
