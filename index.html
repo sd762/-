@@ -1435,7 +1435,15 @@
             const loadAllDataFromCloud = async (currentSession) => {
                 const sess = currentSession || session;
                 if (!sess) return;
-                console.log("\u6b63\u5728\u5f9e\u96f2\u7aef\u8b80\u53d6\u8cc7\u6599...");
+
+                // Get the user's JWT token for authenticated requests
+                const jwt = sess.access_token;
+                const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
+                const headers = {
+                    'apikey': anonKey,
+                    'Authorization': `Bearer ${jwt}`,
+                    'Content-Type': 'application/json'
+                };
 
                 // Compute role/unit from the live session object
                 const sessRole = sess.user?.user_metadata?.role;
@@ -1447,37 +1455,47 @@
                 const sessAdmin = sessRole === 'admin' || sessSuperAdmin;
                 const sessShengfu = sessUnit === '\u751f\u798f\u8ab2';
                 const sessCanViewAll = sessAdmin || sessShengfu;
-                
+
+                console.log('\u96f2\u7aef\u540c\u6b65\u767b\u5165:', sess.user?.email, '\u6a5f\u69cb:', sessUnit, '\u53ef\u770b\u5168\u90e8:', sessCanViewAll);
+
                 try {
                     // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
-                    let query = supabaseClient.from('audit_records').select('*');
+                    let url = `${supabaseUrl}/rest/v1/audit_records?select=*&order=audit_date.desc`;
                     if (!sessCanViewAll && sessUnit) {
-                        query = query.eq('unit', sessUnit);
+                        url += `&unit=eq.${encodeURIComponent(sessUnit)}`;
                     }
-                    const { data: recs, error: e1 } = await query.order('audit_date', { ascending: false });
-                    if (e1) { console.error("\u8b80\u53d6\u7d00\u9304\u5931\u6557:", e1); }
-                    else if (recs) {
+                    const recRes = await fetch(url, { headers });
+                    if (recRes.ok) {
+                        const recs = await recRes.json();
+                        console.log('\u8b80\u53d6\u7d00\u9304\u6578\u91cf:', recs.length);
                         setRecords(recs.map(r => ({
                             id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
                             unitCategory: r.unit_category, unit: r.unit, target: r.target, jobTitle: r.job_title,
                             auditor: r.auditor, score: r.score, score2: r.score2, notes: r.notes,
                             isDual: r.is_dual, technique: r.technique, checklist: r.checklist
                         })));
+                    } else {
+                        const errText = await recRes.text();
+                        console.error('\u8b80\u53d6\u7d00\u9304\u5931\u6557:', recRes.status, errText);
                     }
 
                     // 2. \u8b80\u53d6\u984c\u5eab
-                    const { data: tpls, error: e2 } = await supabaseClient.from('audit_templates').select('*');
-                    if (!e2 && tpls && tpls.length > 0) {
-                        setTemplates(tpls.map(t => ({
-                            id: t.id, name: t.name, mainCategory: t.main_category, subCategory: t.sub_category,
-                            targetStaff: t.target_staff, responsible: t.responsible, frequency: t.frequency,
-                            schedule: t.schedule, threshold: t.threshold, isDual: t.is_dual, items: t.items
-                        })));
+                    const tplRes = await fetch(`${supabaseUrl}/rest/v1/audit_templates?select=*`, { headers });
+                    if (tplRes.ok) {
+                        const tpls = await tplRes.json();
+                        if (tpls.length > 0) {
+                            setTemplates(tpls.map(t => ({
+                                id: t.id, name: t.name, mainCategory: t.main_category, subCategory: t.sub_category,
+                                targetStaff: t.target_staff, responsible: t.responsible, frequency: t.frequency,
+                                schedule: t.schedule, threshold: t.threshold, isDual: t.is_dual, items: t.items
+                            })));
+                        }
                     }
 
                     // 3. \u8b80\u53d6\u4eba\u54e1\u540d\u55ae
-                    const { data: pers, error: e3 } = await supabaseClient.from('audit_personnel').select('*');
-                    if (!e3 && pers) {
+                    const perRes = await fetch(`${supabaseUrl}/rest/v1/audit_personnel?select=*`, { headers });
+                    if (perRes.ok) {
+                        const pers = await perRes.json();
                         const pMap = {};
                         pers.forEach(p => {
                             if (!pMap[p.category]) pMap[p.category] = [];
@@ -1486,7 +1504,7 @@
                         if (Object.keys(pMap).length > 0) setPersonnelData(pMap);
                     }
                 } catch (err) {
-                    console.error("\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:", err);
+                    console.error('\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:', err);
                 }
             };
 
@@ -2466,26 +2484,38 @@
                 // 如果已登入，同步到雲端
                 if (session) {
                     try {
-                        const { error } = await supabaseClient.from('audit_records').insert([{
-                            audit_date: newRec.date,
-                            template_id: currentTemplateId,
-                            audit_name: newRec.auditName,
-                            unit_category: newRec.unitCategory,
-                            unit: newRec.unit,
-                            target: newRec.target,
-                            job_title: newRec.jobTitle,
-                            auditor: newRec.auditor,
-                            score: newRec.score,
-                            score2: newRec.score2,
-                            notes: newRec.notes,
-                            is_dual: !!newRec.isDual,
-                            technique: newRec.technique,
-                            checklist: newRec.checklist,
-                            user_id: session.user.id
-                        }]);
-                        if (error) console.error("同步至雲端失敗:", error);
+                        const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                            method: 'POST',
+                            headers: {
+                                'apikey': 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67',
+                                'Authorization': `Bearer ${session.access_token}`,
+                                'Content-Type': 'application/json',
+                                'Prefer': 'return=minimal'
+                            },
+                            body: JSON.stringify({
+                                audit_date: newRec.date,
+                                template_id: currentTemplateId,
+                                audit_name: newRec.auditName,
+                                unit_category: newRec.unitCategory,
+                                unit: newRec.unit,
+                                target: newRec.target,
+                                job_title: newRec.jobTitle,
+                                auditor: newRec.auditor,
+                                score: newRec.score,
+                                score2: newRec.score2,
+                                notes: newRec.notes,
+                                is_dual: !!newRec.isDual,
+                                technique: newRec.technique,
+                                checklist: newRec.checklist,
+                                user_id: session.user.id
+                            })
+                        });
+                        if (!res.ok) {
+                            const errText = await res.text();
+                            console.error('\u540c\u6b65\u81f3\u96f2\u7aef\u5931\u6557:', res.status, errText);
+                        }
                     } catch (err) {
-                        console.error("雲端存檔錯誤:", err);
+                        console.error('\u96f2\u7aef\u5b58\u6a94\u932f\u8aa4:', err);
                     }
                 }
 
