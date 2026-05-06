@@ -85,6 +85,22 @@
         const IconFolder = ({ color = "text-blue-500" }) => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className={color} stroke="none"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" /></svg>;
         const IconAdmin = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>;
 
+        const EMAIL_TO_UNIT_MAP = {
+            'hok6@hok2.com.tw': '清山養老院', 'hok3@hok2.com.tw': '清心養老院', 'hok7@hok1.com.tw': '清日養老院',
+            'hok11@hok3.com.tw': '清水養老院', 'hok4@hok2.com.tw': '清平養老院', 'hok8@hok1.com.tw': '清安養老院',
+            'hok5@hok2.com.tw': '清春養老院', 'hok9@hok3.com.tw': '清泉養老院', 'hok15@hok6.com.tw': '清風養老院',
+            'hok2@hok2.com.tw': '清氣養老院', 'hok13@hok6.com.tw': '清涼養老院', 'hok12@hok6.com.tw': '清清養老院',
+            'hok14@hok6.com.tw': '清景養老院', 'hok10@hok3.com.tw': '清照養老院', 'hok16@hok6.com.tw': '清福一館',
+            'hok17@hok6.com.tw': '清福二館', 'hok18@hok6.com.tw': '清福三館', 'hok1@hok2.com.tw': '清福養老院',
+            'hok2f@hok6.com.tw': '清福護理之家'
+        };
+
+        const ALL_UNITS = [
+            '清福一館', '清福二館', '清福三館',
+            '清福養老院', '清春養老院', '清山養老院', '清氣養老院', '清日養老院', '清泉養老院', '清心養老院', '清照養老院', '清水養老院', '清平養老院', '清風養老院', '清清養老院', '清安養老院', '清景養老院', '清涼養老院',
+            '清福護理之家'
+        ];
+
         // --- 本地儲存管理 ---
         const Storage = {
             saveRecords: (data) => localStorage.setItem('audit_records_v1', JSON.stringify(data)),
@@ -170,6 +186,7 @@
             
             const [newEmail, setNewEmail] = useState('');
             const [newPassword, setNewPassword] = useState('');
+            const [newUnit, setNewUnit] = useState('');
             const [creating, setCreating] = useState(false);
 
             const handleUnlock = async (e) => {
@@ -239,7 +256,8 @@
                         body: JSON.stringify({
                             email: newEmail,
                             password: newPassword,
-                            email_confirm: true
+                            email_confirm: true,
+                            user_metadata: { unit: newUnit, role: 'user' }
                         })
                     });
 
@@ -248,6 +266,7 @@
 
                     setNewEmail('');
                     setNewPassword('');
+                    setNewUnit('');
                     fetchUsers();
                 } catch (err) {
                     setError('建立失敗：' + err.message);
@@ -303,6 +322,31 @@
                     alert("密碼重置成功！");
                 } catch (err) {
                     setError('重置密碼失敗：' + err.message);
+                }
+            };
+
+            const handleFixUnits = async () => {
+                if (!window.confirm('確定要根據預設名單自動修正所有帳號的所屬機構嗎？\n這將會補齊已建立但缺乏機構資訊的帳號。')) return;
+                setLoadingUsers(true);
+                let count = 0;
+                try {
+                    for (let u of users) {
+                        const mappedUnit = EMAIL_TO_UNIT_MAP[u.email.toLowerCase()];
+                        if (mappedUnit && (!u.user_metadata || u.user_metadata.unit !== mappedUnit)) {
+                            await fetch(`${supabaseUrl}/auth/v1/admin/users/${u.id}`, {
+                                method: 'PUT',
+                                headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ user_metadata: { ...u.user_metadata, unit: mappedUnit } })
+                            });
+                            count++;
+                        }
+                    }
+                    alert(`修正完成！共更新 ${count} 個帳號。`);
+                    fetchUsers();
+                } catch (err) {
+                    setError('修正過程中發生錯誤：' + err.message);
+                } finally {
+                    setLoadingUsers(false);
                 }
             };
 
@@ -447,6 +491,13 @@
                                             <label className="block text-xs font-bold text-slate-500 mb-1">密碼 (至少6碼)</label>
                                             <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
                                         </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">機構/單位</label>
+                                            <select value={newUnit} onChange={e => setNewUnit(e.target.value)} required className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400 bg-white">
+                                                <option value="">請選擇機構名稱</option>
+                                                {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                            </select>
+                                        </div>
                                         <button type="submit" disabled={creating} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-700 disabled:opacity-50">
                                             {creating ? '建立中...' : '建立帳號'}
                                         </button>
@@ -478,13 +529,19 @@
                             <div className="md:col-span-2">
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className="font-bold text-slate-700">使用者列表 ({users.length})</h3>
-                                    <button onClick={fetchUsers} disabled={loadingUsers} className="text-xs bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-bold text-slate-600">重新整理</button>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleFixUnits} disabled={loadingUsers} className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.22-10.27l-3.27 3.27"/></svg> 自動修正機構名稱
+                                        </button>
+                                        <button onClick={fetchUsers} disabled={loadingUsers} className="text-xs bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-bold text-slate-600">重新整理</button>
+                                    </div>
                                 </div>
                                 <div className="bg-white border rounded-xl overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar">
                                     <table className="w-full text-left text-sm">
                                         <thead className="bg-slate-100 text-slate-600 sticky top-0">
                                             <tr>
                                                 <th className="p-3 font-bold">Email</th>
+                                                <th className="p-3 font-bold">機構名稱</th>
                                                 <th className="p-3 font-bold">建立時間</th>
                                                 <th className="p-3 font-bold text-center">操作</th>
                                             </tr>
@@ -493,6 +550,7 @@
                                             {users.map(u => (
                                                 <tr key={u.id} className="hover:bg-slate-50">
                                                     <td className="p-3 text-slate-800">{u.email}</td>
+                                                    <td className="p-3 text-slate-800 font-bold">{u.user_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}</td>
                                                     <td className="p-3 text-slate-500 text-xs">{new Date(u.created_at).toLocaleString()}</td>
                                                     <td className="p-3 text-center flex justify-center gap-2">
                                                         <button onClick={() => handleResetPassword(u.id, u.email)} title="重置密碼" className="text-amber-500 hover:text-amber-700 p-1 bg-amber-50 hover:bg-amber-100 rounded">
@@ -1128,27 +1186,7 @@
             return str;
         };
 
-        const EMAIL_TO_UNIT_MAP = {
-            'hok6@hok2.com.tw': '清山養老院',
-            'hok3@hok2.com.tw': '清心養老院',
-            'hok7@hok1.com.tw': '清日養老院',
-            'hok11@hok3.com.tw': '清水養老院',
-            'hok4@hok2.com.tw': '清平養老院',
-            'hok8@hok1.com.tw': '清安養老院',
-            'hok5@hok2.com.tw': '清春養老院',
-            'hok9@hok3.com.tw': '清泉養老院',
-            'hok15@hok6.com.tw': '清風養老院',
-            'hok2@hok2.com.tw': '清氣養老院',
-            'hok13@hok6.com.tw': '清涼養老院',
-            'hok12@hok6.com.tw': '清清養老院',
-            'hok14@hok6.com.tw': '清景養老院',
-            'hok10@hok3.com.tw': '清照養老院',
-            'hok16@hok6.com.tw': '清福一館',
-            'hok17@hok6.com.tw': '清福二館',
-            'hok18@hok6.com.tw': '清福三館',
-            'hok1@hok2.com.tw': '清福養老院',
-            'hok2f@hok6.com.tw': '清福護理之家'
-        };
+
 
         const App = () => {
             const [session, setSession] = useState(null);
