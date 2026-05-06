@@ -1156,6 +1156,29 @@
             const [checklist, setChecklist] = useState([]);
             const [showPersonnelDropdown, setShowPersonnelDropdown] = useState(false);
             const targetInputRef = React.useRef(null);
+            
+            const [showPwdModal, setShowPwdModal] = useState(false);
+            const [newPwd, setNewPwd] = useState('');
+            const [pwdError, setPwdError] = useState('');
+            const [pwdMsg, setPwdMsg] = useState('');
+
+            const userRole = session?.user?.user_metadata?.role;
+            const userUnit = session?.user?.user_metadata?.unit;
+            const isAdmin = userRole === 'admin' || session?.user?.email === 'sd@hok6.com.tw';
+            const isSuperAdmin = session?.user?.email === 'sd@hok6.com.tw';
+            const displayRole = isSuperAdmin ? '系統開發者' : (isAdmin ? '系統管理員' : '機構帳號');
+
+            useEffect(() => {
+                if (!isAdmin && userUnit) {
+                    setFormData(p => ({ ...p, unitCategory: getUnitCategory(userUnit), unit: userUnit }));
+                    setFilterUnitCategory(getUnitCategory(userUnit));
+                    setFilterUnit(userUnit);
+                }
+            }, [userUnit, isAdmin]);
+
+            const [checklist, setChecklist] = useState([]);
+            const [showPersonnelDropdown, setShowPersonnelDropdown] = useState(false);
+            const targetInputRef = React.useRef(null);
 
             const availableYears = useMemo(() => {
                 const years = [...new Set(records.map(r => String(r.date).substring(0, 4)))].filter(y => y.length === 4).sort().reverse();
@@ -1191,7 +1214,11 @@
                 
                 try {
                     // 1. 讀取紀錄 (只讀取自己的，或根據需求調整)
-                    const { data: recs, error: e1 } = await supabaseClient.from('audit_records').select('*').order('audit_date', { ascending: false });
+                    let query = supabaseClient.from('audit_records').select('*');
+                    if (!isSuperAdmin && userUnit) {
+                        query = query.eq('unit', userUnit);
+                    }
+                    const { data: recs, error: e1 } = await query.order('audit_date', { ascending: false });
                     if (!e1 && recs) {
                         setRecords(recs.map(r => ({
                             id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
@@ -2395,7 +2422,19 @@
                 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
                     <nav className="bg-primary text-white p-4 shadow-lg sticky top-0 z-50 flex justify-between items-center">
                         <div className="flex flex-col"><h1 className="font-bold text-lg tracking-tight">清福技術考稽核系統</h1><span className="text-[9px] bg-white/20 px-2 py-0.5 rounded self-start uppercase">V1.3 彈性擴充版</span></div>
+                        
+                        {session && (
+                            <div className="flex flex-wrap items-center gap-1 md:gap-2 bg-white/10 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs">
+                                <span className="font-bold">{userUnit ? `[${userUnit}]` : ''}</span>
+                                <span>{session.user.email}</span>
+                                <span className="bg-blue-800 px-1.5 py-0.5 rounded text-[10px] uppercase border border-white/20">{displayRole}</span>
+                            </div>
+                        )}
+
                         <div className="flex items-center gap-3">
+                            <button onClick={() => setShowPwdModal(true)} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
+                                變更密碼
+                            </button>
                             <label className="cursor-pointer bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded flex items-center gap-1 transition-colors">
                                 <IconImport /> 匯入資料 (搬家)
                                 <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
@@ -2415,7 +2454,7 @@
                             <button onClick={() => setActiveTab('history')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'history' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconHistory /> 紀錄庫</button>
                             <button onClick={() => setActiveTab('chart')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'chart' ? 'bg-primary text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconChart /> 分析報表</button>
                             <button onClick={() => setActiveTab('manual')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'manual' ? 'bg-teal-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconManual /> 使用手冊</button>
-                            <button onClick={() => setActiveTab('admin')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'admin' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconAdmin /> 系統後台</button>
+                            {isAdmin && <button onClick={() => setActiveTab('admin')} className={`flex-1 min-w-[80px] py-3 rounded-lg font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 transition-all ${activeTab === 'admin' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><IconAdmin /> 系統後台</button>}
                         </div>
 
                         {showHistoryImportModal && (
@@ -2505,14 +2544,14 @@
                                                         let newUnit = '';
                                                         if (cat === '清福護理之家') newUnit = '清福護理之家';
                                                         setFormData({ ...formData, unitCategory: cat, unit: newUnit, target: '' });
-                                                    }} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white">
+                                                    }} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                                         <option value="">請選擇</option>
                                                         <option value="法人館">法人館</option>
                                                         <option value="養護機構">養護機構</option>
                                                         <option value="清福護理之家">清福護理之家</option>
                                                     </select>
                                                     {formData.unitCategory === '法人館' && (
-                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white">
+                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                                             <option value="">選擇分館</option>
                                                             <option value="清福一館">清福一館</option>
                                                             <option value="清福二館">清福二館</option>
@@ -2520,7 +2559,7 @@
                                                         </select>
                                                     )}
                                                     {formData.unitCategory === '養護機構' && (
-                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white">
+                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                                             <option value="">選擇機構</option>
                                                             <option value="清福養老院">清福養老院</option>
                                                             <option value="清春養老院">清春養老院</option>
@@ -2732,14 +2771,14 @@
                                     <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有月份</option>{uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}</select>
                                     <select value={filterItem} onChange={e => setFilterItem(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有稽核項目</option>{uniqueItems.map(i => <option key={i} value={i}>{i}</option>)}</select>
 
-                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border rounded-lg text-xs outline-none bg-white">
+                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                         <option value="">所有機構類別</option>
                                         <option value="法人館">法人館</option>
                                         <option value="養護機構">養護機構</option>
                                         <option value="清福護理之家">清福護理之家</option>
                                     </select>
                                     {filterUnitCategory === '法人館' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white">
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                             <option value="">所有分館</option>
                                             <option value="清福一館">清福一館</option>
                                             <option value="清福二館">清福二館</option>
@@ -2747,7 +2786,7 @@
                                         </select>
                                     )}
                                     {filterUnitCategory === '養護機構' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white">
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                             <option value="">所有養護機構</option>
                                             <option value="清福養老院">清福養老院</option>
                                             <option value="清春養老院">清春養老院</option>
@@ -2861,14 +2900,14 @@
                                         {availableYears.map(y => <option key={y} value={y}>{y} 年度</option>)}
                                     </select>
 
-                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white">
+                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                         <option value="">所有機構類別</option>
                                         <option value="法人館">法人館</option>
                                         <option value="養護機構">養護機構</option>
                                         <option value="清福護理之家">清福護理之家</option>
                                     </select>
                                     {filterUnitCategory === '法人館' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white">
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                             <option value="">所有分館</option>
                                             <option value="清福一館">清福一館</option>
                                             <option value="清福二館">清福二館</option>
@@ -2876,7 +2915,7 @@
                                         </select>
                                     )}
                                     {filterUnitCategory === '養護機構' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white">
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
                                             <option value="">所有養護機構</option>
                                             <option value="清福養老院">清福養老院</option>
                                             <option value="清春養老院">清春養老院</option>
@@ -3086,6 +3125,38 @@
                                                 <input type="file" multiple accept=".xlsx, .xls, .csv" onChange={handleImportPersonnel} className="hidden" />
                                             </label>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showPwdModal && (
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 border border-slate-100">
+                                <h3 className="font-bold text-lg mb-4 text-slate-800">變更密碼</h3>
+                                <div className="space-y-4">
+                                    <input 
+                                        type="password" 
+                                        placeholder="輸入新密碼 (至少 6 碼)" 
+                                        value={newPwd} 
+                                        onChange={e => setNewPwd(e.target.value)} 
+                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-primary transition-colors text-sm"
+                                    />
+                                    {pwdError && <p className="text-red-500 text-xs font-bold">{pwdError}</p>}
+                                    {pwdMsg && <p className="text-emerald-600 text-xs font-bold">{pwdMsg}</p>}
+                                    <div className="flex gap-2 justify-end mt-6">
+                                        <button onClick={() => setShowPwdModal(false)} className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">取消</button>
+                                        <button onClick={async () => {
+                                            if (newPwd.length < 6) { setPwdError('密碼長度至少需要 6 碼'); return; }
+                                            setPwdError(''); setPwdMsg('');
+                                            const { error } = await supabaseClient.auth.updateUser({ password: newPwd });
+                                            if (error) setPwdError('密碼變更失敗: ' + error.message);
+                                            else {
+                                                setPwdMsg('✅ 密碼變更成功！即將關閉...');
+                                                setTimeout(() => { setShowPwdModal(false); setNewPwd(''); setPwdMsg(''); }, 1500);
+                                            }
+                                        }} className="px-5 py-2.5 bg-primary text-white rounded-xl text-sm font-bold shadow hover:bg-blue-700 transition-colors">確認變更</button>
                                     </div>
                                 </div>
                             </div>
