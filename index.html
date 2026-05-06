@@ -1176,9 +1176,7 @@
                 }
             }, [userUnit, isAdmin]);
 
-            const [checklist, setChecklist] = useState([]);
-            const [showPersonnelDropdown, setShowPersonnelDropdown] = useState(false);
-            const targetInputRef = React.useRef(null);
+
 
             const availableYears = useMemo(() => {
                 const years = [...new Set(records.map(r => String(r.date).substring(0, 4)))].filter(y => y.length === 4).sort().reverse();
