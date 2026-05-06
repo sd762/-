@@ -1432,18 +1432,31 @@
                 }
             }, []);
 
-            const loadAllDataFromCloud = async () => {
-                if (!session) return;
-                console.log("正在從雲端讀取資料...");
+            const loadAllDataFromCloud = async (currentSession) => {
+                const sess = currentSession || session;
+                if (!sess) return;
+                console.log("\u6b63\u5728\u5f9e\u96f2\u7aef\u8b80\u53d6\u8cc7\u6599...");
+
+                // Compute role/unit from the live session object
+                const sessRole = sess.user?.user_metadata?.role;
+                let sessUnit = sess.user?.user_metadata?.unit;
+                if (!sessUnit && sess.user?.email) {
+                    sessUnit = EMAIL_TO_UNIT_MAP[sess.user.email.toLowerCase()] || '';
+                }
+                const sessSuperAdmin = sess.user?.email === 'sd@hok6.com.tw';
+                const sessAdmin = sessRole === 'admin' || sessSuperAdmin;
+                const sessShengfu = sessUnit === '\u751f\u798f\u8ab2';
+                const sessCanViewAll = sessAdmin || sessShengfu;
                 
                 try {
-                    // 1. 讀取紀錄 (只讀取自己的，或根據需求調整)
+                    // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
                     let query = supabaseClient.from('audit_records').select('*');
-                    if (!isSuperAdmin && userUnit) {
-                        query = query.eq('unit', userUnit);
+                    if (!sessCanViewAll && sessUnit) {
+                        query = query.eq('unit', sessUnit);
                     }
                     const { data: recs, error: e1 } = await query.order('audit_date', { ascending: false });
-                    if (!e1 && recs) {
+                    if (e1) { console.error("\u8b80\u53d6\u7d00\u9304\u5931\u6557:", e1); }
+                    else if (recs) {
                         setRecords(recs.map(r => ({
                             id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
                             unitCategory: r.unit_category, unit: r.unit, target: r.target, jobTitle: r.job_title,
@@ -1452,7 +1465,7 @@
                         })));
                     }
 
-                    // 2. 讀取題庫
+                    // 2. \u8b80\u53d6\u984c\u5eab
                     const { data: tpls, error: e2 } = await supabaseClient.from('audit_templates').select('*');
                     if (!e2 && tpls && tpls.length > 0) {
                         setTemplates(tpls.map(t => ({
@@ -1462,7 +1475,7 @@
                         })));
                     }
 
-                    // 3. 讀取人員名單
+                    // 3. \u8b80\u53d6\u4eba\u54e1\u540d\u55ae
                     const { data: pers, error: e3 } = await supabaseClient.from('audit_personnel').select('*');
                     if (!e3 && pers) {
                         const pMap = {};
@@ -1473,12 +1486,12 @@
                         if (Object.keys(pMap).length > 0) setPersonnelData(pMap);
                     }
                 } catch (err) {
-                    console.error("載入雲端資料失敗:", err);
+                    console.error("\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:", err);
                 }
             };
 
             useEffect(() => {
-                if (session) loadAllDataFromCloud();
+                if (session) loadAllDataFromCloud(session);
             }, [session]);
 
             useEffect(() => { 
