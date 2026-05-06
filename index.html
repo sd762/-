@@ -177,7 +177,7 @@
         };
 
         // --- 系統後台組件 ---
-        const AdminPanel = ({ handleTemplateUpload }) => {
+        const AdminPanel = ({ handleTemplateUpload, handleExportBackup, handleImportBackup }) => {
             const [serviceKey, setServiceKey] = useState('');
             const [isAdminAuth, setIsAdminAuth] = useState(false);
             const [adminClient, setAdminClient] = useState(null);
@@ -189,6 +189,9 @@
             const [newPassword, setNewPassword] = useState('');
             const [newUnit, setNewUnit] = useState('');
             const [creating, setCreating] = useState(false);
+
+            // Modal for editing unit name
+            const [editUnitModal, setEditUnitModal] = useState({ open: false, userId: null, userEmail: '', value: '' });
 
             const handleUnlock = async (e) => {
                 e.preventDefault();
@@ -298,28 +301,27 @@
                 }
             };
 
-            const handleEditUnit = async (userId, userEmail, currentUnit) => {
-                const newUnitName = prompt(`請輸入 ${userEmail} 的新機構名稱：\n\n(例如：生福課、清福一館、清山養老院...等)\n\n若要清除請輸入 "無"`, currentUnit || '');
-                if (newUnitName === null) return;
-                
-                const finalUnit = newUnitName === '無' ? '' : newUnitName.trim();
-                
+            const openEditUnitModal = (userId, userEmail, currentUnit) => {
+                setEditUnitModal({ open: true, userId, userEmail, value: currentUnit || '' });
+            };
+
+            const handleEditUnitSave = async () => {
+                const { userId, value } = editUnitModal;
+                const user = users.find(u => u.id === userId);
+                const currentMetadata = user?.user_metadata || {};
+
                 setLoadingUsers(true);
                 try {
-                    const user = users.find(u => u.id === userId);
-                    const currentMetadata = user?.user_metadata || {};
-                    
                     const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
                         method: 'PUT',
                         headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_metadata: { ...currentMetadata, unit: finalUnit } })
+                        body: JSON.stringify({ user_metadata: { ...currentMetadata, unit: value.trim() } })
                     });
-                    
-                    if (!response.ok) throw new Error("更新失敗");
-                    alert("機構名稱修改成功！");
+                    if (!response.ok) throw new Error('更新失敗');
+                    setEditUnitModal({ open: false, userId: null, userEmail: '', value: '' });
                     fetchUsers();
                 } catch (err) {
-                    alert('修改失敗：' + err.message);
+                    setError('修改失敗：' + err.message);
                 } finally {
                     setLoadingUsers(false);
                 }
@@ -552,6 +554,18 @@
                                         <IconImport /> 點擊選擇檔案上傳<input type="file" accept=".docx, .xlsx, .xls" onChange={handleTemplateUpload} className="hidden" />
                                     </label>
                                 </div>
+                                <div className="pt-6 border-t border-slate-100">
+                                    <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">💾 資料搬家與備份</h3>
+                                    <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">匯出完整備份 JSON 以便日後搬家還原，或從備份檔案匯入歷史資料。</p>
+                                    <div className="flex flex-col gap-2">
+                                        <button onClick={handleExportBackup} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm">
+                                            <IconDownload /> 匯出所有資料 (備份)
+                                        </button>
+                                        <label className="w-full bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-300 font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm cursor-pointer">
+                                            <IconImport /> 匯入備份資料 (搬家)<input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="md:col-span-2">
@@ -580,7 +594,7 @@
                                                     <td className="p-3 text-slate-800">{u.email}</td>
                                                     <td className="p-3 text-slate-800 font-bold group">
                                                         {u.user_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}
-                                                        <button onClick={() => handleEditUnit(u.id, u.email, u.user_metadata?.unit)} title="修改機構" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
+                                                        <button onClick={() => openEditUnitModal(u.id, u.email, u.user_metadata?.unit)} title="修改機構" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
                                                     </td>
                                                     <td className="p-3 text-slate-500 text-xs">{new Date(u.created_at).toLocaleString()}</td>
                                                     <td className="p-3 text-center flex justify-center gap-2">
@@ -603,6 +617,23 @@
                         </div>
                     </div>
                 </div>
+
+                {editUnitModal.open && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 border border-slate-100">
+                            <h3 className="font-bold text-slate-800 text-lg">✏️ 修改所屬機構</h3>
+                            <p className="text-xs text-slate-500">{editUnitModal.userEmail}</p>
+                            <select value={editUnitModal.value} onChange={e => setEditUnitModal(m => ({ ...m, value: e.target.value }))} className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm bg-white">
+                                <option value="">-- 清除（無機構）--</option>
+                                {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={() => setEditUnitModal({ open: false, userId: null, userEmail: '', value: '' })} className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50">取消</button>
+                                <button onClick={handleEditUnitSave} disabled={loadingUsers} className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50">{loadingUsers ? '儲存中...' : '確認儲存'}</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             );
         };
 
@@ -2569,14 +2600,7 @@
                             <button onClick={() => setShowPwdModal(true)} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
                                 變更密碼
                             </button>
-                            <label className="cursor-pointer bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded flex items-center gap-1 transition-colors">
-                                <IconImport /> 匯入資料 (搬家)
-                                <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
-                            </label>
-                            <button onClick={handleExportBackup} className="bg-white text-primary hover:bg-slate-100 text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
-                                <IconDownload /> 匯出所有資料 (備份)
-                            </button>
-                            <button onClick={() => supabaseClient.auth.signOut()} className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm ml-2">
+                            <button onClick={() => supabaseClient.auth.signOut()} className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
                                 登出
                             </button>
                         </div>
@@ -3144,8 +3168,8 @@
                             </div>
                         )}
 
-                        {activeTab === 'admin' && (
-                            <AdminPanel />
+                        {activeTab === 'admin' && isAdmin && (
+                            <AdminPanel handleTemplateUpload={handleTemplateUpload} handleExportBackup={handleExportBackup} handleImportBackup={handleImportBackup} />
                         )}
                     </main>
 
