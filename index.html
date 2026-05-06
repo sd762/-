@@ -96,6 +96,7 @@
         };
 
         const ALL_UNITS = [
+            '生福課',
             '清福一館', '清福二館', '清福三館',
             '清福養老院', '清春養老院', '清山養老院', '清氣養老院', '清日養老院', '清泉養老院', '清心養老院', '清照養老院', '清水養老院', '清平養老院', '清風養老院', '清清養老院', '清安養老院', '清景養老院', '清涼養老院',
             '清福護理之家'
@@ -294,6 +295,33 @@
                     fetchUsers();
                 } catch (err) {
                     setError('刪除失敗：' + err.message);
+                }
+            };
+
+            const handleEditUnit = async (userId, userEmail, currentUnit) => {
+                const newUnitName = prompt(`請輸入 ${userEmail} 的新機構名稱：\n\n(例如：生福課、清福一館、清山養老院...等)\n\n若要清除請輸入 "無"`, currentUnit || '');
+                if (newUnitName === null) return;
+                
+                const finalUnit = newUnitName === '無' ? '' : newUnitName.trim();
+                
+                setLoadingUsers(true);
+                try {
+                    const user = users.find(u => u.id === userId);
+                    const currentMetadata = user?.user_metadata || {};
+                    
+                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+                        method: 'PUT',
+                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_metadata: { ...currentMetadata, unit: finalUnit } })
+                    });
+                    
+                    if (!response.ok) throw new Error("更新失敗");
+                    alert("機構名稱修改成功！");
+                    fetchUsers();
+                } catch (err) {
+                    alert('修改失敗：' + err.message);
+                } finally {
+                    setLoadingUsers(false);
                 }
             };
 
@@ -550,7 +578,10 @@
                                             {users.map(u => (
                                                 <tr key={u.id} className="hover:bg-slate-50">
                                                     <td className="p-3 text-slate-800">{u.email}</td>
-                                                    <td className="p-3 text-slate-800 font-bold">{u.user_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}</td>
+                                                    <td className="p-3 text-slate-800 font-bold group">
+                                                        {u.user_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}
+                                                        <button onClick={() => handleEditUnit(u.id, u.email, u.user_metadata?.unit)} title="修改機構" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
+                                                    </td>
                                                     <td className="p-3 text-slate-500 text-xs">{new Date(u.created_at).toLocaleString()}</td>
                                                     <td className="p-3 text-center flex justify-center gap-2">
                                                         <button onClick={() => handleResetPassword(u.id, u.email)} title="重置密碼" className="text-amber-500 hover:text-amber-700 p-1 bg-amber-50 hover:bg-amber-100 rounded">
@@ -1269,15 +1300,17 @@
 
             const isAdmin = userRole === 'admin' || session?.user?.email === 'sd@hok6.com.tw';
             const isSuperAdmin = session?.user?.email === 'sd@hok6.com.tw';
-            const displayRole = isSuperAdmin ? '系統開發者' : (isAdmin ? '系統管理員' : '機構帳號');
+            const isShengfu = userUnit === '生福課';
+            const canViewAll = isAdmin || isShengfu;
+            const displayRole = isSuperAdmin ? '系統開發者' : (isAdmin ? '系統管理員' : (isShengfu ? '生福課 (總管)' : '機構帳號'));
 
             useEffect(() => {
-                if (!isAdmin && userUnit) {
+                if (!canViewAll && userUnit) {
                     setFormData(p => ({ ...p, unitCategory: getUnitCategory(userUnit), unit: userUnit }));
                     setFilterUnitCategory(getUnitCategory(userUnit));
                     setFilterUnit(userUnit);
                 }
-            }, [userUnit, isAdmin]);
+            }, [userUnit, canViewAll]);
 
 
 
@@ -2642,14 +2675,14 @@
                                                         let newUnit = '';
                                                         if (cat === '清福護理之家') newUnit = '清福護理之家';
                                                         setFormData({ ...formData, unitCategory: cat, unit: newUnit, target: '' });
-                                                    }} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                                    }} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                                         <option value="">請選擇</option>
                                                         <option value="法人館">法人館</option>
                                                         <option value="養護機構">養護機構</option>
                                                         <option value="清福護理之家">清福護理之家</option>
                                                     </select>
                                                     {formData.unitCategory === '法人館' && (
-                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                                             <option value="">選擇分館</option>
                                                             <option value="清福一館">清福一館</option>
                                                             <option value="清福二館">清福二館</option>
@@ -2657,7 +2690,7 @@
                                                         </select>
                                                     )}
                                                     {formData.unitCategory === '養護機構' && (
-                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                                             <option value="">選擇機構</option>
                                                             <option value="清福養老院">清福養老院</option>
                                                             <option value="清春養老院">清春養老院</option>
@@ -2869,14 +2902,14 @@
                                     <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有月份</option>{uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}</select>
                                     <select value={filterItem} onChange={e => setFilterItem(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有稽核項目</option>{uniqueItems.map(i => <option key={i} value={i}>{i}</option>)}</select>
 
-                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                         <option value="">所有機構類別</option>
                                         <option value="法人館">法人館</option>
                                         <option value="養護機構">養護機構</option>
                                         <option value="清福護理之家">清福護理之家</option>
                                     </select>
                                     {filterUnitCategory === '法人館' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有分館</option>
                                             <option value="清福一館">清福一館</option>
                                             <option value="清福二館">清福二館</option>
@@ -2884,7 +2917,7 @@
                                         </select>
                                     )}
                                     {filterUnitCategory === '養護機構' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有養護機構</option>
                                             <option value="清福養老院">清福養老院</option>
                                             <option value="清春養老院">清春養老院</option>
@@ -2998,14 +3031,14 @@
                                         {availableYears.map(y => <option key={y} value={y}>{y} 年度</option>)}
                                     </select>
 
-                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                    <select value={filterUnitCategory} onChange={e => { setFilterUnitCategory(e.target.value); setFilterUnit(e.target.value === '清福護理之家' ? '清福護理之家' : ''); }} className="p-2 border rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                         <option value="">所有機構類別</option>
                                         <option value="法人館">法人館</option>
                                         <option value="養護機構">養護機構</option>
                                         <option value="清福護理之家">清福護理之家</option>
                                     </select>
                                     {filterUnitCategory === '法人館' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有分館</option>
                                             <option value="清福一館">清福一館</option>
                                             <option value="清福二館">清福二館</option>
@@ -3013,7 +3046,7 @@
                                         </select>
                                     )}
                                     {filterUnitCategory === '養護機構' && (
-                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!isAdmin && !!userUnit}>
+                                        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有養護機構</option>
                                             <option value="清福養老院">清福養老院</option>
                                             <option value="清春養老院">清春養老院</option>
