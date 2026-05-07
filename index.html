@@ -2698,6 +2698,39 @@
 
                 if (allImported.length > 0) {
                     setRecords(prev => [...allImported, ...prev]);
+                    if (session) {
+                        try {
+                            const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
+                            fetch(${supabaseUrl}/rest/v1/audit_records, {
+                                method: 'POST',
+                                headers: {
+                                    'apikey': anonKey,
+                                    'Authorization': Bearer ,
+                                    'Content-Type': 'application/json',
+                                    'Prefer': 'return=minimal'
+                                },
+                                body: JSON.stringify(allImported.map(r => ({
+                                    id: r.id,
+                                    audit_date: r.date,
+                                    audit_name: r.auditName,
+                                    unit_category: r.unitCategory || '',
+                                    unit: r.unit || '',
+                                    target: r.target || '',
+                                    job_title: r.jobTitle || '',
+                                    auditor: r.auditor || '',
+                                    score: r.score,
+                                    score2: r.score2 || null,
+                                    notes: r.notes || '',
+                                    is_dual: !!r.isDual,
+                                    technique: r.technique || '',
+                                    checklist: r.checklist || [],
+                                    user_id: session.user.id
+                                })))
+                            });
+                        } catch (e) {
+                            console.error('同步匯入資料至雲端失敗', e);
+                        }
+                    }
                 }
 
                 let msg = `✅ 成功匯入 ${allImported.length} 筆資料 (來自 ${successFiles} 個檔案)！`;
