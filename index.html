@@ -1512,10 +1512,10 @@
                         setRecords(recs.map(r => {
                             const data = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
                             return {
-                                id: r.id, date: data.date || (r.created_at || '').split('T')[0], templateId: data.templateId, auditName: data.auditName,
-                                unitCategory: data.unitCategory, unit: String(data.unit || '').trim(), target: data.target, jobTitle: data.jobTitle,
-                                auditor: data.auditor, score: data.score, score2: data.score2, notes: data.notes,
-                                isDual: data.isDual, technique: data.technique, checklist: data.checklist || []
+                                id: r.id, date: data.date || (r.created_at || '').split('T')[0], templateId: data.templateId, auditName: data.auditName || '',
+                                unitCategory: data.unitCategory || '', unit: String(data.unit || '').trim(), target: data.target || '', jobTitle: data.jobTitle || '',
+                                auditor: data.auditor || '', score: data.score, score2: data.score2, notes: data.notes || '',
+                                isDual: data.isDual, technique: data.technique || '', checklist: data.checklist || []
                             };
                         }));
                     } else {
