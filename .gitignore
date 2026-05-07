@@ -1,0 +1,8 @@
+build/
+build_tmp/
+dist/
+dist_tmp/
+__pycache__/
+*.exe
+*.pkg
+*.pyc

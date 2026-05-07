@@ -753,7 +753,8 @@
             if (['清福一館', '清福二館', '清福三館'].includes(unit)) return '法人館';
             if (['清福養老院', '清春養老院', '清山養老院', '清氣養老院', '清日養老院', '清泉養老院', '清心養老院', '清照養老院', '清水養老院', '清平養老院', '清風養老院', '清清養老院', '清安養老院', '清景養老院', '清涼養老院'].includes(unit)) return '養護機構';
             if (unit === '清福護理之家') return '清福護理之家';
-            return '';
+            if (unit === '生福課') return '生福課';
+            return '其他機構';
         };
 
         // --- 動態題庫：雙指標手部衛生定義 ---
@@ -1468,6 +1469,29 @@
                 return years.length > 0 ? years : [new Date().getFullYear().toString()];
             }, [records]);
             const [selectedYear, setSelectedYear] = useState(availableYears[0] || new Date().getFullYear().toString());
+
+            const [customUnits, setCustomUnits] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('custom_units_list') || '[]'); } catch(e) { return []; }
+            });
+            const dynamicUnits = useMemo(() => {
+                return [...new Set([...ALL_UNITS, ...customUnits])];
+            }, [customUnits]);
+            const [showUnitModal, setShowUnitModal] = useState(false);
+            const [newCustomUnit, setNewCustomUnit] = useState('');
+
+            const handleAddCustomUnit = () => {
+                if (!newCustomUnit.trim()) return;
+                const updated = [...new Set([...customUnits, newCustomUnit.trim()])];
+                setCustomUnits(updated);
+                localStorage.setItem('custom_units_list', JSON.stringify(updated));
+                setNewCustomUnit('');
+            };
+            const handleRemoveCustomUnit = (u) => {
+                if (!window.confirm(`確定要刪除「${u}」嗎？`)) return;
+                const updated = customUnits.filter(x => x !== u);
+                setCustomUnits(updated);
+                localStorage.setItem('custom_units_list', JSON.stringify(updated));
+            };
 
             const [templates, setTemplates] = useState(() => {
                 const saved = Storage.getTemplates();
@@ -2857,6 +2881,9 @@
                         )}
 
                         <div className="flex items-center gap-3">
+                            <button onClick={() => setShowUnitModal(true)} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
+                                機構管理
+                            </button>
                             <button onClick={() => setShowPwdModal(true)} className="bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded font-bold flex items-center gap-1 transition-colors shadow-sm">
                                 變更密碼
                             </button>
@@ -2962,6 +2989,7 @@
                                                         <option value="法人館">法人館</option>
                                                         <option value="養護機構">養護機構</option>
                                                         <option value="清福護理之家">清福護理之家</option>
+                                                        <option value="其他機構">其他機構</option>
                                                     </select>
                                                     {formData.unitCategory === '法人館' && (
                                                         <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
@@ -2974,7 +3002,13 @@
                                                     {formData.unitCategory === '養護機構' && (
                                                         <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                                             <option value="">選擇機構</option>
-                                                            {dynamicUnits.filter(u => u !== '生福課').map(u => <option key={u} value={u}>{u}</option>)}
+                                                            {dynamicUnits.filter(u => getUnitCategory(u) === '養護機構').map(u => <option key={u} value={u}>{u}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {formData.unitCategory === '其他機構' && (
+                                                        <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
+                                                            <option value="">選擇機構</option>
+                                                            {dynamicUnits.filter(u => getUnitCategory(u) === '其他機構').map(u => <option key={u} value={u}>{u}</option>)}
                                                         </select>
                                                     )}
                                                 </div>
@@ -3559,6 +3593,52 @@
                                 <div className="flex justify-end gap-3">
                                     {dialog.type === 'confirm' && <button onClick={() => { if (dialog.onCancel) dialog.onCancel(); setDialog({ ...dialog, isOpen: false }); }} className="px-5 py-2 bg-slate-100 rounded-xl font-bold text-sm">取消</button>}
                                     <button onClick={() => { if (dialog.onConfirm) dialog.onConfirm(); setDialog({ ...dialog, isOpen: false }); }} className={`px-5 py-2 rounded-xl font-bold text-sm text-white ${dialog.type === 'confirm' ? 'bg-red-600' : 'bg-primary'}`}>{dialog.type === 'confirm' ? '確定' : '了解'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showUnitModal && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-fade-in">
+                            <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full flex flex-col max-h-[80vh]">
+                                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                                    <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">🏢 增添或刪除機構</h3>
+                                    <button onClick={() => setShowUnitModal(false)} className="text-slate-400 hover:text-red-500 font-bold text-2xl leading-none">&times;</button>
+                                </div>
+                                <div className="mb-4">
+                                    <p className="text-xs text-slate-500 mb-2">您可以在此新增自訂機構名稱（例如：測試機構），新增後即可在選單中看見它。</p>
+                                    <div className="flex gap-2">
+                                        <input type="text" value={newCustomUnit} onChange={e => setNewCustomUnit(e.target.value)} placeholder="輸入機構名稱..." className="flex-1 p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm" />
+                                        <button onClick={handleAddCustomUnit} disabled={!newCustomUnit.trim()} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 text-sm">
+                                            新增
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar border border-slate-100 rounded-xl">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-50 text-slate-600 sticky top-0">
+                                            <tr>
+                                                <th className="p-3 font-bold">自訂機構名稱</th>
+                                                <th className="p-3 font-bold text-center w-20">操作</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {customUnits.length === 0 ? (
+                                                <tr><td colSpan="2" className="p-6 text-center text-slate-400">目前尚無自訂機構</td></tr>
+                                            ) : (
+                                                customUnits.map(u => (
+                                                    <tr key={u} className="hover:bg-slate-50">
+                                                        <td className="p-3 text-slate-800 font-bold">{u}</td>
+                                                        <td className="p-3 text-center">
+                                                            <button onClick={() => handleRemoveCustomUnit(u)} title="刪除機構" className="text-red-400 hover:text-red-600 p-1 bg-red-50 hover:bg-red-100 rounded">
+                                                                <IconTrash />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
