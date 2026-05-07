@@ -122,14 +122,14 @@
             'hok2@hok2.com.tw': '清氣養老院', 'hok13@hok6.com.tw': '清涼養老院', 'hok12@hok6.com.tw': '清清養老院',
             'hok14@hok6.com.tw': '清景養老院', 'hok10@hok3.com.tw': '清照養老院', 'hok16@hok6.com.tw': '清福一館',
             'hok17@hok6.com.tw': '清福二館', 'hok18@hok6.com.tw': '清福三館', 'hok1@hok2.com.tw': '清福養老院',
-            'hok2f@hok6.com.tw': '清福護理之家'
+            'hok2f@hok6.com.tw': '清福護理之家', 'test@hok6.com.tw': '測試機構'
         };
 
         const ALL_UNITS = [
             '生福課',
             '清福一館', '清福二館', '清福三館',
             '清福養老院', '清春養老院', '清山養老院', '清氣養老院', '清日養老院', '清泉養老院', '清心養老院', '清照養老院', '清水養老院', '清平養老院', '清風養老院', '清清養老院', '清安養老院', '清景養老院', '清涼養老院',
-            '清福護理之家'
+            '清福護理之家', '測試機構'
         ];
 
         // --- 本地儲存管理 ---
@@ -252,6 +252,25 @@
 
         // --- 系統後台組件 ---
         const AdminPanel = ({ handleTemplateUpload, handleExportBackup, handleImportBackup }) => {
+            const [customUnits, setCustomUnits] = useState([]);
+            const [newCustomUnit, setNewCustomUnit] = useState('');
+            useEffect(() => {
+                try { setCustomUnits(JSON.parse(localStorage.getItem('custom_units_list') || '[]')); } catch(e){}
+            }, []);
+            const handleAddCustomUnit = () => {
+                if (!newCustomUnit.trim()) return;
+                const updated = [...new Set([...customUnits, newCustomUnit.trim()])];
+                setCustomUnits(updated);
+                localStorage.setItem('custom_units_list', JSON.stringify(updated));
+                setNewCustomUnit('');
+                alert('已新增機構，請重新整理網頁生效');
+            };
+            const handleRemoveCustomUnit = (u) => {
+                const updated = customUnits.filter(x => x !== u);
+                setCustomUnits(updated);
+                localStorage.setItem('custom_units_list', JSON.stringify(updated));
+            };
+
             const [serviceKey, setServiceKey] = useState('');
             const [isAdminAuth, setIsAdminAuth] = useState(false);
             const [adminClient, setAdminClient] = useState(null);
@@ -600,9 +619,9 @@
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-1">機構/單位</label>
-                                            <select value={ALL_UNITS.includes(newUnit) ? newUnit : (newUnit ? '__custom__' : '')} onChange={e => { if (e.target.value !== '__custom__') setNewUnit(e.target.value); }} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400 bg-white mb-1">
+                                            <select value={[...ALL_UNITS, ...customUnits].includes(newUnit) ? newUnit : (newUnit ? '__custom__' : '')} onChange={e => { if (e.target.value !== '__custom__') setNewUnit(e.target.value); }} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400 bg-white mb-1">
                                                 <option value="">請選擇機構名稱</option>
-                                                {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                                {[...new Set([...ALL_UNITS, ...customUnits])].map(u => <option key={u} value={u}>{u}</option>)}
                                                 <option value="__custom__">✔ 手動輸入其他名稱...</option>
                                             </select>
                                             <input type="text" value={newUnit} onChange={e => setNewUnit(e.target.value)} placeholder="手動輸入或從上方選擇..." className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
@@ -2868,17 +2887,15 @@
                                             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">將此檔案資料歸屬於哪一間機構？</label>
                                             <select value={importTargetUnit} onChange={e => setImportTargetUnit(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm">
                                                 <option value="">-- 請先選擇機構 --</option>
-                                                <optgroup label="法人館">
-                                                    <option value="清福一館">清福一館</option><option value="清福二館">清福二館</option><option value="清福三館">清福三館</option>
-                                                </optgroup>
-                                                <optgroup label="養護機構">
-                                                    <option value="清福養老院">清福養老院</option><option value="清春養老院">清春養老院</option><option value="清山養老院">清山養老院</option>
-                                                    <option value="清氣養老院">清氣養老院</option><option value="清日養老院">清日養老院</option><option value="清泉養老院">清泉養老院</option>
-                                                    <option value="清心養老院">清心養老院</option><option value="清照養老院">清照養老院</option><option value="清水養老院">清水養老院</option>
-                                                    <option value="清平養老院">清平養老院</option><option value="清風養老院">清風養老院</option><option value="清清養老院">清清養老院</option>
-                                                    <option value="清安養老院">清安養老院</option><option value="清景養老院">清景養老院</option><option value="清涼養老院">清涼養老院</option>
-                                                </optgroup>
-                                                <optgroup label="護理之家"><option value="清福護理之家">清福護理之家</option></optgroup>
+                                                {['法人館', '養護機構', '清福護理之家', '其他機構'].map(cat => {
+                                                    const units = dynamicUnits.filter(u => u !== '生福課' && getUnitCategory(u) === cat);
+                                                    if (units.length === 0) return null;
+                                                    return (
+                                                        <optgroup key={cat} label={cat}>
+                                                            {units.map(u => <option key={u} value={u}>{u}</option>)}
+                                                        </optgroup>
+                                                    );
+                                                })}
                                             </select>
                                         </div>
                                         <div className="pt-2">
@@ -2957,21 +2974,7 @@
                                                     {formData.unitCategory === '養護機構' && (
                                                         <select value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value, target: '' })} className="flex-1 p-2 border border-slate-200 rounded text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                                             <option value="">選擇機構</option>
-                                                            <option value="清福養老院">清福養老院</option>
-                                                            <option value="清春養老院">清春養老院</option>
-                                                            <option value="清山養老院">清山養老院</option>
-                                                            <option value="清氣養老院">清氣養老院</option>
-                                                            <option value="清日養老院">清日養老院</option>
-                                                            <option value="清泉養老院">清泉養老院</option>
-                                                            <option value="清心養老院">清心養老院</option>
-                                                            <option value="清照養老院">清照養老院</option>
-                                                            <option value="清水養老院">清水養老院</option>
-                                                            <option value="清平養老院">清平養老院</option>
-                                                            <option value="清風養老院">清風養老院</option>
-                                                            <option value="清清養老院">清清養老院</option>
-                                                            <option value="清安養老院">清安養老院</option>
-                                                            <option value="清景養老院">清景養老院</option>
-                                                            <option value="清涼養老院">清涼養老院</option>
+                                                            {dynamicUnits.filter(u => u !== '生福課').map(u => <option key={u} value={u}>{u}</option>)}
                                                         </select>
                                                     )}
                                                 </div>
@@ -3176,29 +3179,13 @@
                                     {filterUnitCategory === '法人館' && (
                                         <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有分館</option>
-                                            <option value="清福一館">清福一館</option>
-                                            <option value="清福二館">清福二館</option>
-                                            <option value="清福三館">清福三館</option>
+                                            {dynamicUnits.filter(u => getUnitCategory(u) === '法人館').map(u => <option key={u} value={u}>{u}</option>)}
                                         </select>
                                     )}
                                     {filterUnitCategory === '養護機構' && (
                                         <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有養護機構</option>
-                                            <option value="清福養老院">清福養老院</option>
-                                            <option value="清春養老院">清春養老院</option>
-                                            <option value="清山養老院">清山養老院</option>
-                                            <option value="清氣養老院">清氣養老院</option>
-                                            <option value="清日養老院">清日養老院</option>
-                                            <option value="清泉養老院">清泉養老院</option>
-                                            <option value="清心養老院">清心養老院</option>
-                                            <option value="清照養老院">清照養老院</option>
-                                            <option value="清水養老院">清水養老院</option>
-                                            <option value="清平養老院">清平養老院</option>
-                                            <option value="清風養老院">清風養老院</option>
-                                            <option value="清清養老院">清清養老院</option>
-                                            <option value="清安養老院">清安養老院</option>
-                                            <option value="清景養老院">清景養老院</option>
-                                            <option value="清涼養老院">清涼養老院</option>
+                                            {dynamicUnits.filter(u => getUnitCategory(u) === '養護機構').map(u => <option key={u} value={u}>{u}</option>)}
                                         </select>
                                     )}
 
@@ -3305,29 +3292,13 @@
                                     {filterUnitCategory === '法人館' && (
                                         <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有分館</option>
-                                            <option value="清福一館">清福一館</option>
-                                            <option value="清福二館">清福二館</option>
-                                            <option value="清福三館">清福三館</option>
+                                            {dynamicUnits.filter(u => getUnitCategory(u) === '法人館').map(u => <option key={u} value={u}>{u}</option>)}
                                         </select>
                                     )}
                                     {filterUnitCategory === '養護機構' && (
                                         <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} className="p-2 border border-slate-300 rounded-lg text-sm outline-none bg-white disabled:opacity-60 disabled:cursor-not-allowed" disabled={!canViewAll && !!userUnit}>
                                             <option value="">所有養護機構</option>
-                                            <option value="清福養老院">清福養老院</option>
-                                            <option value="清春養老院">清春養老院</option>
-                                            <option value="清山養老院">清山養老院</option>
-                                            <option value="清氣養老院">清氣養老院</option>
-                                            <option value="清日養老院">清日養老院</option>
-                                            <option value="清泉養老院">清泉養老院</option>
-                                            <option value="清心養老院">清心養老院</option>
-                                            <option value="清照養老院">清照養老院</option>
-                                            <option value="清水養老院">清水養老院</option>
-                                            <option value="清平養老院">清平養老院</option>
-                                            <option value="清風養老院">清風養老院</option>
-                                            <option value="清清養老院">清清養老院</option>
-                                            <option value="清安養老院">清安養老院</option>
-                                            <option value="清景養老院">清景養老院</option>
-                                            <option value="清涼養老院">清涼養老院</option>
+                                            {dynamicUnits.filter(u => getUnitCategory(u) === '養護機構').map(u => <option key={u} value={u}>{u}</option>)}
                                         </select>
                                     )}
 
