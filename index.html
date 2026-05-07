@@ -2576,7 +2576,7 @@
                     }
                 }
 
-                setFormData(p => ({ ...p, target: '', score: '', score2: '', notes: '' }));
+                setFormData(p => ({ ...p, target: '', jobTitle: '', score: '', score2: '', notes: '' }));
                 if (formData.isDual) setChecklist(checklist.map(i => ({ ...i, comp: null, acc: null, note: '' })));
                 else setChecklist(checklist.map(i => ({ ...i, score: i.maxScore, note: '', mode: 'full' })));
                 showAlert('💾 紀錄已儲存！');
@@ -2665,11 +2665,14 @@
                                     });
                                 }
 
+                                const finalUnit = targetUnit || String(row['受稽單位'] || row['單位'] || '未指派單位');
                                 return {
                                     id: 'import_' + Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5) + '_' + index,
                                     date: normalizeDate(row['稽核日期'] || row['日期']),
                                     auditName: finalAuditName,
-                                    unit: targetUnit || String(row['受稽單位'] || row['單位'] || '未指派單位'),
+                                    unitCategory: getUnitCategory(finalUnit),
+                                    unit: finalUnit,
+                                    jobTitle: String(row['職務'] || ''),
                                     target: String(row['受測對象(姓名)'] || row['受測對象']),
                                     auditor: String(row['稽核人員'] || row['稽核員']),
                                     score: Number(row['總評分(遵從率)'] || row['總評分'] || 0),
@@ -2936,7 +2939,7 @@
                                                                                 <div
                                                                                     key={`${cat}-${i}`}
                                                                                     className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 hover:text-primary font-bold transition-colors border-b border-slate-50 last:border-0"
-                                                                                    onMouseDown={(e) => { e.preventDefault(); setFormData(p => ({ ...p, target: name })); setShowPersonnelDropdown(false); }}
+                                                                                    onMouseDown={(e) => { e.preventDefault(); const newJobTitle = cat === '護理類' ? '護理師' : (cat === '照服類' ? '照服員' : '其他'); setFormData(p => ({ ...p, target: name, jobTitle: newJobTitle })); setShowPersonnelDropdown(false); }}
                                                                                 >{name}</div>
                                                                             ))}
                                                                         </div>
@@ -3398,7 +3401,8 @@
                                                                             <span
                                                                                 className="text-sm cursor-pointer hover:text-primary font-bold w-full"
                                                                                 onClick={() => {
-                                                                                    setFormData(p => ({ ...p, target: name }));
+                                                                                    const newJobTitle = cat === '護理類' ? '護理師' : (cat === '照服類' ? '照服員' : '其他');
+                                                                                    setFormData(p => ({ ...p, target: name, jobTitle: newJobTitle }));
                                                                                     setShowPersonnelModal(false);
                                                                                 }}
                                                                             >{name}</span>
