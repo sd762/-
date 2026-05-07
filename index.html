@@ -1473,7 +1473,7 @@
                     const recRes = await fetch(url, { headers });
                     if (recRes.ok) {
                         const recs = await recRes.json();
-                        console.log('\u8b80\u53d6\u7d00\u9304\u6578\u91cf:', recs.length);
+                        console.log('讀取紀錄數量:', recs.length); setDebugInfo(`雲端共回傳 ${recs.length} 筆資料，您的機構為 [${sessUnit}]`);
                         recs.forEach(r => cloudIds.add(String(r.id)));
                         setRecords(recs.map(r => ({
                             id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
@@ -1780,7 +1780,7 @@
                         const uCat = r.unitCategory || getUnitCategory(r.unit);
                         return String(r.date).startsWith(selectedYear) &&
                             r.auditName.includes(tpl.name) &&
-                            (filterUnit ? String(r.unit || '').trim() === String(filterUnit || '').trim() : (filterUnitCategory ? uCat === filterUnitCategory : true));
+                            (filterUnit ? (String(r.unit || '').trim().includes(String(filterUnit || '').trim()) || String(filterUnit || '').trim().includes(String(r.unit || '').trim())) : (filterUnitCategory ? uCat === filterUnitCategory : true));
                     });
                     const mAvgs = Array(13).fill(null).map(() => ({ val: '', count: 0, manual: false }));
                     let sum = 0, sum2 = 0, count = 0;
@@ -1914,7 +1914,7 @@
                     const uCat = r.unitCategory || getUnitCategory(r.unit);
                     return (filterMonth ? String(r.date).startsWith(filterMonth) : true) &&
                         (filterItem ? r.auditName === filterItem : true) &&
-                        (filterUnit ? String(r.unit || '').trim() === String(filterUnit || '').trim() : (filterUnitCategory ? uCat === filterUnitCategory : true));
+                        (filterUnit ? (String(r.unit || '').trim().includes(String(filterUnit || '').trim()) || String(filterUnit || '').trim().includes(String(r.unit || '').trim())) : (filterUnitCategory ? uCat === filterUnitCategory : true));
                 });
             }, [records, filterMonth, filterItem, filterUnitCategory, filterUnit]);
 
@@ -3236,7 +3236,7 @@
                                     const chartRecords = records.filter(r => {
                                         const uCat = r.unitCategory || getUnitCategory(r.unit);
                                         return String(r.date).startsWith(selectedYear) &&
-                                            (filterUnit ? String(r.unit || '').trim() === String(filterUnit || '').trim() : (filterUnitCategory ? uCat === filterUnitCategory : true));
+                                            (filterUnit ? (String(r.unit || '').trim().includes(String(filterUnit || '').trim()) || String(filterUnit || '').trim().includes(String(r.unit || '').trim())) : (filterUnitCategory ? uCat === filterUnitCategory : true));
                                     });
                                     return (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
