@@ -1568,9 +1568,7 @@
                                     const errText = await res.text();
                                     console.error(`\u4e0a\u50b3\u5931\u6557 [${r.auditName}]:`, res.status, errText);
                                 }
-                            } catch (e) {
-                                console.error('\u81ea\u52d5\u4e0a\u50b3\u932f\u8aa4:', e);
-                            }
+                            } catch (e) { console.error("Failed", e); }
                         }
                         console.log(`\u81ea\u52d5\u4e0a\u50b3\u5b8c\u6210\uff1a${uploaded}/${missing.length} \u7b46\u6210\u529f\u3002`);
                         // 上傳後重新從雲端讀取，確保 id 一致性
@@ -2727,9 +2725,7 @@
                                     user_id: session.user.id
                                 })))
                             });
-                        } catch (e) {
-                            console.error('同步匯入資料至雲端失敗', e);
-                        }
+                        } catch (e) { console.error("Failed", e); }
                     }
                 }
 
