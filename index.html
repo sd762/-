@@ -1434,7 +1434,7 @@
 
             const loadAllDataFromCloud = async (currentSession) => {
                 const sess = currentSession || session;
-                if (!sess) return;
+                if (!sess) return new Set();
 
                 // Get the user's JWT token for authenticated requests
                 const jwt = sess.access_token;
@@ -1458,6 +1458,7 @@
 
                 console.log('\u96f2\u7aef\u540c\u6b65\u767b\u5165:', sess.user?.email, '\u6a5f\u69cb:', sessUnit, '\u53ef\u770b\u5168\u90e8:', sessCanViewAll);
 
+                const cloudIds = new Set();
                 try {
                     // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
                     let url = `${supabaseUrl}/rest/v1/audit_records?select=*&order=audit_date.desc`;
@@ -1468,6 +1469,7 @@
                     if (recRes.ok) {
                         const recs = await recRes.json();
                         console.log('\u8b80\u53d6\u7d00\u9304\u6578\u91cf:', recs.length);
+                        recs.forEach(r => cloudIds.add(String(r.id)));
                         setRecords(recs.map(r => ({
                             id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
                             unitCategory: r.unit_category, unit: r.unit, target: r.target, jobTitle: r.job_title,
@@ -1506,16 +1508,61 @@
                 } catch (err) {
                     console.error('\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:', err);
                 }
+                return cloudIds;
             };
 
             useEffect(() => {
-                if (session) loadAllDataFromCloud(session);
+                if (session) {
+                    loadAllDataFromCloud(session).then(async (cloudIds) => {
+                        // 自動遷移：把 localStorage 中雲端沒有的舊紀錄上傳
+                        if (!cloudIds || cloudIds.size === 0) return;
+                        const localRecs = Storage.getRecords();
+                        const missing = localRecs.filter(r => !cloudIds.has(String(r.id)));
+                        if (missing.length === 0) return;
+                        console.log(`\u81ea\u52d5\u4e0a\u50b3 ${missing.length} \u7b46\u672c\u6a5f\u672a\u540c\u6b65\u7d00\u9304\u81f3\u96f2\u7aef...`);
+                        const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
+                        const headers = {
+                            'apikey': anonKey,
+                            'Authorization': `Bearer ${session.access_token}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'return=minimal'
+                        };
+                        // 分批上傳（每批20筆）避免超時
+                        for (let i = 0; i < missing.length; i += 20) {
+                            const batch = missing.slice(i, i + 20);
+                            try {
+                                await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                                    method: 'POST',
+                                    headers,
+                                    body: JSON.stringify(batch.map(r => ({
+                                        id: String(r.id),
+                                        audit_date: r.date,
+                                        template_id: r.templateId || null,
+                                        audit_name: r.auditName,
+                                        unit_category: r.unitCategory || '',
+                                        unit: r.unit || '',
+                                        target: r.target || '',
+                                        job_title: r.jobTitle || '',
+                                        auditor: r.auditor || '',
+                                        score: r.score,
+                                        score2: r.score2 || null,
+                                        notes: r.notes || '',
+                                        is_dual: !!r.isDual,
+                                        technique: r.technique || '',
+                                        checklist: r.checklist || [],
+                                        user_id: session.user.id
+                                    })))
+                                });
+                            } catch (e) {
+                                console.error('\u81ea\u52d5\u4e0a\u50b3\u5931\u6557:', e);
+                            }
+                        }
+                        console.log('\u81ea\u52d5\u4e0a\u50b3\u5b8c\u6210\u3002');
+                    });
+                }
             }, [session]);
 
-            useEffect(() => { 
-                Storage.saveRecords(records);
-                // 如果已登入，這裡可以實作自動同步邏輯，但為了效能建議在新增時才同步
-            }, [records]);
+            useEffect(() => { Storage.saveRecords(records); }, [records]);
             useEffect(() => { Storage.saveTemplates(templates); }, [templates]);
             useEffect(() => { Storage.saveSettings(reportSettings); }, [reportSettings]);
             useEffect(() => { Storage.savePersonnel(personnelData); }, [personnelData]);
