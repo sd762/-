@@ -1317,6 +1317,7 @@
 
         const App = () => {
             const [session, setSession] = useState(null);
+            const [debugInfo, setDebugInfo] = React.useState('');
             const [loadingAuth, setLoadingAuth] = useState(true);
             const [activeTab, setActiveTab] = useState('form');
             const [records, setRecords] = useState(() => Storage.getRecords());
@@ -1473,7 +1474,8 @@
                     const recRes = await fetch(url, { headers });
                     if (recRes.ok) {
                         const recs = await recRes.json();
-                        console.log('讀取紀錄數量:', recs.length); setDebugInfo(`雲端共回傳 ${recs.length} 筆資料，您的機構為 [${sessUnit}]`);
+                        console.log('Records loaded:', recs.length);
+                        setDebugInfo(`雲端共回傳 ${recs.length} 筆資料，您的機構為 [${sessUnit}]`);
                         recs.forEach(r => cloudIds.add(String(r.id)));
                         setRecords(recs.map(r => ({
                             id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
@@ -3547,6 +3549,7 @@
                             </div>
                         </div>
                     )}
+                    <div style={{fontSize:"10px", color:"#999", padding:"10px", textAlign:"center", borderTop:"1px dashed #eee"}}>{debugInfo || "正在載入雲端診斷資訊..."}</div>
                 </div>
             );
         };
