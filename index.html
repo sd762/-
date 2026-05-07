@@ -494,7 +494,7 @@
                                 template_id: r.templateId,
                                 audit_name: r.auditName,
                                 unit_category: r.unitCategory,
-                                unit: r.unit,
+                                unit: String(r.unit || '').trim(),
                                 target: r.target,
                                 job_title: r.jobTitle,
                                 auditor: r.auditor,
@@ -1468,10 +1468,8 @@
                 const cloudIds = new Set();
                 try {
                     // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
+                    // 1. 讀取稽核紀錄 (後端不帶過濾條件，由前端處理，避免編碼不一致)
                     let url = `${supabaseUrl}/rest/v1/audit_records?select=*&order=audit_date.desc`;
-                    if (!sessCanViewAll && sessUnit) {
-                        url += `&unit=eq.${encodeURIComponent(sessUnit)}`;
-                    }
                     const recRes = await fetch(url, { headers });
                     if (recRes.ok) {
                         const recs = await recRes.json();
@@ -1479,7 +1477,7 @@
                         recs.forEach(r => cloudIds.add(String(r.id)));
                         setRecords(recs.map(r => ({
                             id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
-                            unitCategory: r.unit_category, unit: r.unit, target: r.target, jobTitle: r.job_title,
+                            unitCategory: r.unit_category, unit: String(r.unit || '').trim(), target: r.target, jobTitle: r.job_title,
                             auditor: r.auditor, score: r.score, score2: r.score2, notes: r.notes,
                             isDual: r.is_dual, technique: r.technique, checklist: r.checklist
                         })));
@@ -1549,7 +1547,7 @@
                                         template_id: r.templateId || null,
                                         audit_name: r.auditName,
                                         unit_category: r.unitCategory || '',
-                                        unit: r.unit || '',
+                                        unit: String(r.unit || '').trim(),
                                         target: r.target || '',
                                         job_title: r.jobTitle || '',
                                         auditor: r.auditor || '',
@@ -1782,7 +1780,7 @@
                         const uCat = r.unitCategory || getUnitCategory(r.unit);
                         return String(r.date).startsWith(selectedYear) &&
                             r.auditName.includes(tpl.name) &&
-                            (filterUnit ? r.unit === filterUnit : (filterUnitCategory ? uCat === filterUnitCategory : true));
+                            (filterUnit ? String(r.unit || '').trim() === String(filterUnit || '').trim() : (filterUnitCategory ? uCat === filterUnitCategory : true));
                     });
                     const mAvgs = Array(13).fill(null).map(() => ({ val: '', count: 0, manual: false }));
                     let sum = 0, sum2 = 0, count = 0;
@@ -1916,7 +1914,7 @@
                     const uCat = r.unitCategory || getUnitCategory(r.unit);
                     return (filterMonth ? String(r.date).startsWith(filterMonth) : true) &&
                         (filterItem ? r.auditName === filterItem : true) &&
-                        (filterUnit ? r.unit === filterUnit : (filterUnitCategory ? uCat === filterUnitCategory : true));
+                        (filterUnit ? String(r.unit || '').trim() === String(filterUnit || '').trim() : (filterUnitCategory ? uCat === filterUnitCategory : true));
                 });
             }, [records, filterMonth, filterItem, filterUnitCategory, filterUnit]);
 
@@ -2559,7 +2557,7 @@
                                 template_id: currentTemplateId,
                                 audit_name: newRec.auditName,
                                 unit_category: newRec.unitCategory,
-                                unit: newRec.unit,
+                                unit: String(newRec.unit || '').trim(),
                                 target: newRec.target,
                                 job_title: newRec.jobTitle,
                                 auditor: newRec.auditor,
@@ -2676,7 +2674,7 @@
                                     date: normalizeDate(row['稽核日期'] || row['日期']),
                                     auditName: finalAuditName,
                                     unitCategory: getUnitCategory(finalUnit),
-                                    unit: finalUnit,
+                                    unit: String(finalUnit || '').trim(),
                                     jobTitle: String(row['職務'] || ''),
                                     target: String(row['受測對象(姓名)'] || row['受測對象']),
                                     auditor: String(row['稽核人員'] || row['稽核員']),
@@ -2712,7 +2710,7 @@
                                     audit_date: r.date,
                                     audit_name: r.auditName,
                                     unit_category: r.unitCategory || '',
-                                    unit: r.unit || '',
+                                    unit: String(r.unit || '').trim(),
                                     target: r.target || '',
                                     job_title: r.jobTitle || '',
                                     auditor: r.auditor || '',
@@ -3238,7 +3236,7 @@
                                     const chartRecords = records.filter(r => {
                                         const uCat = r.unitCategory || getUnitCategory(r.unit);
                                         return String(r.date).startsWith(selectedYear) &&
-                                            (filterUnit ? r.unit === filterUnit : (filterUnitCategory ? uCat === filterUnitCategory : true));
+                                            (filterUnit ? String(r.unit || '').trim() === String(filterUnit || '').trim() : (filterUnitCategory ? uCat === filterUnitCategory : true));
                                     });
                                     return (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
