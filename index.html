@@ -1507,6 +1507,7 @@
                     }
                 } catch (err) {
                     console.error('\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:', err);
+                    return null;
                 }
                 return cloudIds;
             };
@@ -1515,27 +1516,28 @@
                 if (session) {
                     loadAllDataFromCloud(session).then(async (cloudIds) => {
                         // 自動遷移：把 localStorage 中雲端沒有的舊紀錄上傳
-                        if (!cloudIds || cloudIds.size === 0) return;
+                        // cloudIds 是 null 表示讀取失敗，才跳過；空 Set 表示雲端無資料，仍需上傳
+                        if (cloudIds === null) return;
                         const localRecs = Storage.getRecords();
+                        if (!localRecs || localRecs.length === 0) return;
                         const missing = localRecs.filter(r => !cloudIds.has(String(r.id)));
-                        if (missing.length === 0) return;
+                        if (missing.length === 0) { console.log('\u96f2\u7aef\u8cc7\u6599\u5df2\u662f\u6700\u65b0\uff0c\u7121\u9700\u8fc7\u6e21\u3002'); return; }
                         console.log(`\u81ea\u52d5\u4e0a\u50b3 ${missing.length} \u7b46\u672c\u6a5f\u672a\u540c\u6b65\u7d00\u9304\u81f3\u96f2\u7aef...`);
                         const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
                         const headers = {
                             'apikey': anonKey,
                             'Authorization': `Bearer ${session.access_token}`,
                             'Content-Type': 'application/json',
-                            'Prefer': 'return=minimal'
+                            'Prefer': 'return=representation'
                         };
-                        // 分批上傳（每批20筆）避免超時
-                        for (let i = 0; i < missing.length; i += 20) {
-                            const batch = missing.slice(i, i + 20);
+                        let uploaded = 0;
+                        // 逐筆上傳以避免 id 型別問題
+                        for (const r of missing) {
                             try {
-                                await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                                const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
                                     method: 'POST',
                                     headers,
-                                    body: JSON.stringify(batch.map(r => ({
-                                        id: String(r.id),
+                                    body: JSON.stringify({
                                         audit_date: r.date,
                                         template_id: r.templateId || null,
                                         audit_name: r.auditName,
@@ -1551,13 +1553,21 @@
                                         technique: r.technique || '',
                                         checklist: r.checklist || [],
                                         user_id: session.user.id
-                                    })))
+                                    })
                                 });
+                                if (res.ok) {
+                                    uploaded++;
+                                } else {
+                                    const errText = await res.text();
+                                    console.error(`\u4e0a\u50b3\u5931\u6557 [${r.auditName}]:`, res.status, errText);
+                                }
                             } catch (e) {
-                                console.error('\u81ea\u52d5\u4e0a\u50b3\u5931\u6557:', e);
+                                console.error('\u81ea\u52d5\u4e0a\u50b3\u932f\u8aa4:', e);
                             }
                         }
-                        console.log('\u81ea\u52d5\u4e0a\u50b3\u5b8c\u6210\u3002');
+                        console.log(`\u81ea\u52d5\u4e0a\u50b3\u5b8c\u6210\uff1a${uploaded}/${missing.length} \u7b46\u6210\u529f\u3002`);
+                        // 上傳後重新從雲端讀取，確保 id 一致性
+                        if (uploaded > 0) loadAllDataFromCloud(session);
                     });
                 }
             }, [session]);
