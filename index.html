@@ -1801,8 +1801,38 @@
                         else if (cat.includes('照顧服務員') || cat.includes('照服') || cat.includes('保母')) cat = '照服類';
                         else cat = '行政類';
                     }
+
+                    if (!canViewAll) {
+                        if (targetUnit && targetUnit !== userUnit) return;
+                        targetUnit = userUnit;
+                    }
+                    if (!targetUnit) targetUnit = '未指派單位';
+
                     itemsToAdd.push({ unit: targetUnit, cat, name });
                 });
+
+                const unitGroups = {};
+                itemsToAdd.forEach(item => {
+                    if (!unitGroups[item.unit]) unitGroups[item.unit] = [];
+                    unitGroups[item.unit].push(item);
+                });
+
+                const finalItemsToAdd = [];
+                for (const [u, items] of Object.entries(unitGroups)) {
+                    if (canViewAll) {
+                        if (window.confirm(`是否確定將 ${items.length} 筆人員名單導入「${u}」？\n(確定後才會導入該機構)`)) {
+                            finalItemsToAdd.push(...items);
+                        }
+                    } else {
+                        if (u === userUnit) finalItemsToAdd.push(...items);
+                    }
+                }
+
+                if (finalItemsToAdd.length === 0) {
+                    showAlert('沒有任何名單被匯入。');
+                    e.target.value = '';
+                    return;
+                }
 
                 // 檢查重複
                 let hasDup = false;
@@ -1811,7 +1841,7 @@
                     tempState[u] = new Set(Object.values(personnelData[u]).flat());
                 });
 
-                for (let item of itemsToAdd) {
+                for (let item of finalItemsToAdd) {
                     if (!tempState[item.unit]) tempState[item.unit] = new Set();
                     if (tempState[item.unit].has(item.name)) { hasDup = true; break; }
                     tempState[item.unit].add(item.name);
@@ -1821,7 +1851,7 @@
                     let count = 0;
                     setPersonnelData(prev => {
                         const newData = { ...prev };
-                        itemsToAdd.forEach(item => {
+                        finalItemsToAdd.forEach(item => {
                             if (!newData[item.unit]) newData[item.unit] = { '護理類': [], '照服類': [], '行政類': [] };
                             const allNames = Object.values(newData[item.unit]).flat();
 
@@ -2753,7 +2783,14 @@
                                     });
                                 }
 
-                                const finalUnit = targetUnit || String(row['受稽單位'] || row['單位'] || '未指派單位');
+                                const parsedUnit = String(row['受稽單位'] || row['單位'] || '').trim();
+                                let finalUnit = '';
+                                if (targetUnit && targetUnit !== 'AUTO') {
+                                    finalUnit = targetUnit;
+                                } else {
+                                    finalUnit = parsedUnit || '未指派單位';
+                                }
+                                
                                 return {
                                     id: 'import_' + Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5) + '_' + index,
                                     date: normalizeDate(row['稽核日期'] || row['日期']),
@@ -2769,7 +2806,30 @@
                                 };
                             });
 
-                            allImported = allImported.concat(imported);
+                            let filteredImported = [];
+                            const unitGroups = {};
+                            imported.forEach(r => {
+                                if (!unitGroups[r.unit]) unitGroups[r.unit] = [];
+                                unitGroups[r.unit].push(r);
+                            });
+
+                            for (const [u, records] of Object.entries(unitGroups)) {
+                                if (!canViewAll) {
+                                    if (u === userUnit || (targetUnit && targetUnit === userUnit)) {
+                                        filteredImported.push(...records);
+                                    }
+                                } else {
+                                    if (targetUnit === 'AUTO') {
+                                        if (window.confirm(`是否確定將 ${records.length} 筆資料導入「${u}」？\n(確定後才會導入該機構)`)) {
+                                            filteredImported.push(...records);
+                                        }
+                                    } else {
+                                        filteredImported.push(...records);
+                                    }
+                                }
+                            }
+
+                            allImported = allImported.concat(filteredImported);
                         });
                         successFiles++;
                     } catch (err) {
@@ -2914,15 +2974,22 @@
                                             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">將此檔案資料歸屬於哪一間機構？</label>
                                             <select value={importTargetUnit} onChange={e => setImportTargetUnit(e.target.value)} className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm">
                                                 <option value="">-- 請先選擇機構 --</option>
-                                                {['法人館', '養護機構', '清福護理之家', '其他機構'].map(cat => {
-                                                    const units = dynamicUnits.filter(u => u !== '生福課' && getUnitCategory(u) === cat);
-                                                    if (units.length === 0) return null;
-                                                    return (
-                                                        <optgroup key={cat} label={cat}>
-                                                            {units.map(u => <option key={u} value={u}>{u}</option>)}
-                                                        </optgroup>
-                                                    );
-                                                })}
+                                                {canViewAll ? (
+                                                    <>
+                                                        <option value="AUTO">🤖 自動判斷 (依檔案內容匯入多家機構)</option>
+                                                        {['法人館', '養護機構', '清福護理之家', '其他機構'].map(cat => {
+                                                            const units = dynamicUnits.filter(u => u !== '生福課' && getUnitCategory(u) === cat);
+                                                            if (units.length === 0) return null;
+                                                            return (
+                                                                <optgroup key={cat} label={cat}>
+                                                                    {units.map(u => <option key={u} value={u}>{u}</option>)}
+                                                                </optgroup>
+                                                            );
+                                                        })}
+                                                    </>
+                                                ) : (
+                                                    <option value={userUnit}>{userUnit}</option>
+                                                )}
                                             </select>
                                         </div>
                                         <div className="pt-2">
