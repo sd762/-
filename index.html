@@ -490,20 +490,22 @@
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify(localRecords.map(r => ({
-                                audit_date: r.date,
-                                template_id: r.templateId,
-                                audit_name: r.auditName,
-                                unit_category: r.unitCategory,
-                                unit: String(r.unit || '').trim(),
-                                target: r.target,
-                                job_title: r.jobTitle,
-                                auditor: r.auditor,
-                                score: r.score,
-                                score2: r.score2,
-                                notes: r.notes,
-                                is_dual: !!r.isDual,
-                                technique: r.technique,
-                                checklist: r.checklist
+                                audit_content: {
+                                    date: r.date,
+                                    templateId: r.templateId,
+                                    auditName: r.auditName,
+                                    unitCategory: r.unitCategory,
+                                    unit: String(r.unit || '').trim(),
+                                    target: r.target,
+                                    jobTitle: r.jobTitle,
+                                    auditor: r.auditor,
+                                    score: r.score,
+                                    score2: r.score2,
+                                    notes: r.notes,
+                                    isDual: !!r.isDual,
+                                    technique: r.technique,
+                                    checklist: r.checklist
+                                }
                             })))
                         });
                     }
@@ -1470,19 +1472,22 @@
                 try {
                     // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
                     // 1. 讀取稽核紀錄 (後端不帶過濾條件，由前端處理，避免編碼不一致)
-                    let url = `${supabaseUrl}/rest/v1/audit_records?select=*&order=audit_date.desc`;
+                    let url = `${supabaseUrl}/rest/v1/audit_records?select=*&order=created_at.desc`;
                     const recRes = await fetch(url, { headers });
                     if (recRes.ok) {
                         const recs = await recRes.json();
                         console.log('Records loaded:', recs.length);
                         setDebugInfo(`\u96f2\u7aef\u5171\u56de\u50b3 ${recs.length} \u7b46\u8cc7\u6599\uff0c\u60a8\u7684\u6a5f\u69cb\u70ba [${sessUnit}]`);
                         recs.forEach(r => cloudIds.add(String(r.id)));
-                        setRecords(recs.map(r => ({
-                            id: r.id, date: r.audit_date, templateId: r.template_id, auditName: r.audit_name,
-                            unitCategory: r.unit_category, unit: String(r.unit || '').trim(), target: r.target, jobTitle: r.job_title,
-                            auditor: r.auditor, score: r.score, score2: r.score2, notes: r.notes,
-                            isDual: r.is_dual, technique: r.technique, checklist: r.checklist
-                        })));
+                        setRecords(recs.map(r => {
+                            const data = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
+                            return {
+                                id: r.id, date: data.date || (r.created_at || '').split('T')[0], templateId: data.templateId, auditName: data.auditName,
+                                unitCategory: data.unitCategory, unit: String(data.unit || '').trim(), target: data.target, jobTitle: data.jobTitle,
+                                auditor: data.auditor, score: data.score, score2: data.score2, notes: data.notes,
+                                isDual: data.isDual, technique: data.technique, checklist: data.checklist || []
+                            };
+                        }));
                     } else {
                         const errText = await recRes.text();
                         console.error('\u8b80\u53d6\u7d00\u9304\u5931\u6557:', recRes.status, errText);
@@ -1545,20 +1550,22 @@
                                     method: 'POST',
                                     headers,
                                     body: JSON.stringify({
-                                        audit_date: r.date,
-                                        template_id: r.templateId || null,
-                                        audit_name: r.auditName,
-                                        unit_category: r.unitCategory || '',
-                                        unit: String(r.unit || '').trim(),
-                                        target: r.target || '',
-                                        job_title: r.jobTitle || '',
-                                        auditor: r.auditor || '',
-                                        score: r.score,
-                                        score2: r.score2 || null,
-                                        notes: r.notes || '',
-                                        is_dual: !!r.isDual,
-                                        technique: r.technique || '',
-                                        checklist: r.checklist || [],
+                                        audit_content: {
+                                            date: r.date,
+                                            templateId: r.templateId || null,
+                                            auditName: r.auditName,
+                                            unitCategory: r.unitCategory || '',
+                                            unit: String(r.unit || '').trim(),
+                                            target: r.target || '',
+                                            jobTitle: r.jobTitle || '',
+                                            auditor: r.auditor || '',
+                                            score: r.score,
+                                            score2: r.score2 || null,
+                                            notes: r.notes || '',
+                                            isDual: !!r.isDual,
+                                            technique: r.technique || '',
+                                            checklist: r.checklist || []
+                                        },
                                         user_id: session.user.id
                                     })
                                 });
@@ -2712,19 +2719,22 @@
                                 },
                                 body: JSON.stringify(allImported.map(r => ({
                                     id: r.id,
-                                    audit_date: r.date,
-                                    audit_name: r.auditName,
-                                    unit_category: r.unitCategory || '',
-                                    unit: String(r.unit || '').trim(),
-                                    target: r.target || '',
-                                    job_title: r.jobTitle || '',
-                                    auditor: r.auditor || '',
-                                    score: r.score,
-                                    score2: r.score2 || null,
-                                    notes: r.notes || '',
-                                    is_dual: !!r.isDual,
-                                    technique: r.technique || '',
-                                    checklist: r.checklist || [],
+                                    audit_content: {
+                                        date: r.date,
+                                        auditName: r.auditName,
+                                        unitCategory: r.unitCategory || '',
+                                        unit: String(r.unit || '').trim(),
+                                        target: r.target || '',
+                                        jobTitle: r.jobTitle || '',
+                                        auditor: r.auditor || '',
+                                        score: r.score,
+                                        score2: r.score2 || null,
+                                        notes: r.notes || '',
+                                        isDual: !!r.isDual,
+                                        technique: r.technique || '',
+                                        checklist: r.checklist || [],
+                                        templateId: r.templateId || null
+                                    },
                                     user_id: session.user.id
                                 })))
                             });
