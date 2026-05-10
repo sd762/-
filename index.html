@@ -2147,9 +2147,29 @@
                     out['檢討改善分析'] = row.analysisText || row.autoAnalysisText || '';
                     return out;
                 });
+
+                const currentUnit = session?.user?.user_metadata?.unit || filterUnit || '清福護理之家';
+                const headerText = `[圖案] 新北市私立${currentUnit}`;
+
                 const wb = window.XLSX.utils.book_new();
-                const ws1 = window.XLSX.utils.json_to_sheet(formatData(careReportData));
-                const ws2 = window.XLSX.utils.json_to_sheet(formatData(equipReportData));
+                
+                // Sheet 1
+                const ws1Data = formatData(careReportData);
+                const ws1 = window.XLSX.utils.aoa_to_sheet([[headerText]]);
+                window.XLSX.utils.sheet_add_json(ws1, ws1Data, { origin: "A2" });
+                
+                // Sheet 2
+                const ws2Data = formatData(equipReportData);
+                const ws2 = window.XLSX.utils.aoa_to_sheet([[headerText]]);
+                window.XLSX.utils.sheet_add_json(ws2, ws2Data, { origin: "A2" });
+
+                // Apply Merges for Header
+                [ws1, ws2].forEach(ws => {
+                    const range = window.XLSX.utils.decode_range(ws['!ref']);
+                    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }];
+                    ws['A1'].s = { alignment: { horizontal: "center", vertical: "center" }, font: { bold: true, sz: 14 } };
+                });
+
                 applyGlobalStyle(ws1); applyGlobalStyle(ws2);
                 addReviewerRow(ws1); addReviewerRow(ws2);
                 window.XLSX.utils.book_append_sheet(wb, ws1, "照護品質監測");
@@ -2259,11 +2279,12 @@
                 // === 洗手遵從性及正確性：始終產出稽核明細 + 統計報表 ===
                 if (handHygieneTargets.length > 0) {
                     let monthStr = filterMonth ? filterMonth.replace('-', '年 ') + '月' : '全部月份';
-                    const unitName = handHygieneTargets[0]?.unit || '新北市私立清福護理之家';
+                    const unitName = handHygieneTargets[0]?.unit || '清福護理之家';
+                    const headerText = `[圖案] 新北市私立${unitName}`;
 
                     // --- Format 1: 稽核明細表 (Detailed Checklist) ---
                     const detailWsData = [];
-                    detailWsData.push([unitName]);
+                    detailWsData.push([headerText]);
                     detailWsData.push(['洗手遵從性及正確性稽核表']);
                     detailWsData.push(['稽核員：（感控專責人員）']);
                     const r3 = [], r4 = [], r5 = [], r6 = [];
@@ -2328,12 +2349,13 @@
                         merges1.push({ s: { r: 5, c: c }, e: { r: 5, c: c + 2 } });   // item
                     });
                     detailWs['!merges'] = merges1;
+                    detailWs['A1'].s = { alignment: { horizontal: "center", vertical: "center" }, font: { bold: true, sz: 14 } };
                     addReviewerRow(detailWs);
                     window.XLSX.utils.book_append_sheet(wb, detailWs, "稽核明細");
 
                     // --- Format 2: 統計報表 (Statistical Summary) ---
                     const statWsData = [
-                        [unitName, '', '', '', '', '', '', '', '', '', '', '', '', ''],
+                        [headerText, '', '', '', '', '', '', '', '', '', '', '', '', ''],
                         [`手部衛生遵從率及正確率內部稽核 ${monthStr}`, '', '', '', '', '', '', '', '', '', '', '', '', ''],
                         ['機構內部\n稽核人員', '', '洗手機會數(T)', '手部衛生/步驟', '', '', '', '時機數（觀察次數）統計', '', '', '', '', '手部衛生\n遵從率', '手部衛生\n正確率'],
                         ['', '', '', '執行乾洗手次數(A)', '乾洗手步驟確實次數(B)', '執行濕洗手次數(C)', '濕洗手步驟確實次數(D)', '時機一', '時機二', '時機三', '時機四', '時機五', '', ''],
@@ -2524,6 +2546,7 @@
                         { s: { r: 6 + handHygieneTargets.length, c: 1 }, e: { r: 6 + handHygieneTargets.length, c: 13 } }
                     ];
                     statWs['!merges'] = merges2;
+                    statWs['A1'].s = { alignment: { horizontal: "center", vertical: "center" }, font: { bold: true, sz: 14 } };
                     addReviewerRow(statWs);
                     window.XLSX.utils.book_append_sheet(wb, statWs, "統計報表");
                 }
@@ -2541,6 +2564,9 @@
 
                     Object.keys(groups).forEach(sheetName => {
                         const groupRecords = groups[sheetName];
+                        const groupUnit = groupRecords[0]?.unit || '清福護理之家';
+                        const headerText = `[圖案] 新北市私立${groupUnit}`;
+
                         const wsData = groupRecords.map(r => {
                             const rowData = {
                                 '稽核日期': r.date,
@@ -2566,7 +2592,13 @@
                             return rowData;
                         });
 
-                        const ws = window.XLSX.utils.json_to_sheet(wsData);
+                        const ws = window.XLSX.utils.aoa_to_sheet([[headerText]]);
+                        window.XLSX.utils.sheet_add_json(ws, wsData, { origin: "A2" });
+                        
+                        const range = window.XLSX.utils.decode_range(ws['!ref']);
+                        ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }];
+                        ws['A1'].s = { alignment: { horizontal: "center", vertical: "center" }, font: { bold: true, sz: 14 } };
+
                         applyGlobalStyle(ws);
                         addReviewerRow(ws);
                         window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
