@@ -1495,11 +1495,11 @@
 
             const [templates, setTemplates] = useState(() => {
                 const saved = Storage.getTemplates();
-                const isMigrated = localStorage.getItem('tpl_migrated_v20');
+                const isMigrated = localStorage.getItem('tpl_migrated_v21');
                 if (!isMigrated) {
                     const uniqueSaved = saved.filter(s => !DEFAULT_TEMPLATES.some(d => d.id === s.id));
                     const merged = [...DEFAULT_TEMPLATES, ...uniqueSaved];
-                    localStorage.setItem('tpl_migrated_v20', 'true');
+                    localStorage.setItem('tpl_migrated_v21', 'true');
                     Storage.saveTemplates(merged);
                     return merged;
                 }
@@ -1508,10 +1508,10 @@
 
             // 確保沒有 migration tag 時自動重置
             useEffect(() => {
-                const checkMigrated = localStorage.getItem('tpl_migrated_v20');
+                const checkMigrated = localStorage.getItem('tpl_migrated_v21');
                 if (!checkMigrated) {
                     setTemplates(DEFAULT_TEMPLATES);
-                    localStorage.setItem('tpl_migrated_v20', 'true');
+                    localStorage.setItem('tpl_migrated_v21', 'true');
                 }
             }, []);
 
