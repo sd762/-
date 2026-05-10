@@ -60,7 +60,7 @@
     </style>
 
     <script>
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
+        window.onerror = function (msg, url, lineNo, columnNo, error) {
             const errDiv = document.createElement('div');
             errDiv.style.position = 'fixed';
             errDiv.style.top = '0';
@@ -74,7 +74,7 @@
             document.body.appendChild(errDiv);
             return false;
         };
-        window.onunhandledrejection = function(event) {
+        window.onunhandledrejection = function (event) {
             const errDiv = document.createElement('div');
             errDiv.style.position = 'fixed';
             errDiv.style.top = '0';
@@ -255,7 +255,7 @@
             const [customUnits, setCustomUnits] = useState([]);
             const [newCustomUnit, setNewCustomUnit] = useState('');
             useEffect(() => {
-                try { setCustomUnits(JSON.parse(localStorage.getItem('custom_units_list') || '[]')); } catch(e){}
+                try { setCustomUnits(JSON.parse(localStorage.getItem('custom_units_list') || '[]')); } catch (e) { }
             }, []);
             const handleAddCustomUnit = () => {
                 if (!newCustomUnit.trim()) return;
@@ -277,7 +277,7 @@
             const [users, setUsers] = useState([]);
             const [loadingUsers, setLoadingUsers] = useState(false);
             const [error, setError] = useState(null);
-            
+
             const [newEmail, setNewEmail] = useState('');
             const [newPassword, setNewPassword] = useState('');
             const [newUnit, setNewUnit] = useState('');
@@ -290,7 +290,7 @@
                 e.preventDefault();
                 setError(null);
                 setLoadingUsers(true);
-                
+
                 try {
                     if (!serviceKey || serviceKey.length < 20) {
                         throw new Error("請輸入有效的 Service Role Key");
@@ -308,7 +308,7 @@
                         const errData = await response.json();
                         throw new Error(errData.msg || errData.error || "金鑰驗證失敗");
                     }
-                    
+
                     const data = await response.json();
                     setUsers(data.users || []);
                     setIsAdminAuth(true);
@@ -341,7 +341,7 @@
                 e.preventDefault();
                 setCreating(true);
                 setError(null);
-                
+
                 try {
                     const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
                         method: 'POST',
@@ -374,7 +374,7 @@
             const handleDeleteUser = async (userId) => {
                 if (!window.confirm('確定要永久刪除此帳號嗎？')) return;
                 setError(null);
-                
+
                 try {
                     const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
                         method: 'DELETE',
@@ -437,7 +437,7 @@
                         },
                         body: JSON.stringify({ password: newPwd })
                     });
-                    
+
                     if (!response.ok) {
                         const data = await response.json();
                         throw new Error(data.msg || data.error || "重置密碼失敗");
@@ -478,7 +478,7 @@
             const handleSyncToCloud = async () => {
                 if (!window.confirm('確定要把目前這台電腦的所有資料（紀錄、題庫、名單）同步到雲端嗎？\n這會讓其他登入者也能看到這些資料。')) return;
                 setSyncStatus({ loading: true, message: '同步中...' });
-                
+
                 try {
                     // 1. 同步人員名單
                     const localPersonnel = Storage.getPersonnel();
@@ -486,7 +486,7 @@
                     Object.entries(localPersonnel).forEach(([cat, names]) => {
                         names.forEach(name => personnelToInsert.push({ category: cat, name }));
                     });
-                    
+
                     if (personnelToInsert.length > 0) {
                         await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
                             method: 'POST',
@@ -574,9 +574,9 @@
                             <h2 className="text-xl font-bold">系統後台登入</h2>
                         </div>
                         <p className="text-sm text-slate-500 mb-6">請輸入 Supabase 的 <code className="bg-slate-100 px-1 rounded">service_role</code> 金鑰以解鎖後台管理權限。此金鑰僅暫存於當前瀏覽器中。</p>
-                        
+
                         {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
-                        
+
                         <form onSubmit={handleUnlock} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-1">Service Role Key</label>
@@ -595,153 +595,153 @@
 
             return (
                 <>
-                <div className="animate-fade-in space-y-6">
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                        <div className="flex justify-between items-center border-b pb-4 mb-4">
-                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><IconAdmin /> 系統後台 - 帳號管理</h2>
-                            <button onClick={() => setIsAdminAuth(false)} className="text-sm text-slate-500 hover:text-red-500">鎖定並登出後台</button>
-                        </div>
+                    <div className="animate-fade-in space-y-6">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <div className="flex justify-between items-center border-b pb-4 mb-4">
+                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><IconAdmin /> 系統後台 - 帳號管理</h2>
+                                <button onClick={() => setIsAdminAuth(false)} className="text-sm text-slate-500 hover:text-red-500">鎖定並登出後台</button>
+                            </div>
 
-                        {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
+                            {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
 
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
-                            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-6">
-                                <div>
-                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">👤 新增人員帳號</h3>
-                                    <form onSubmit={handleCreateUser} className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">電子郵件</label>
-                                            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} required className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">密碼 (至少6碼)</label>
-                                            <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">機構/單位</label>
-                                            <select value={[...ALL_UNITS, ...customUnits].includes(newUnit) ? newUnit : (newUnit ? '__custom__' : '')} onChange={e => { if (e.target.value !== '__custom__') setNewUnit(e.target.value); }} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400 bg-white mb-1">
-                                                <option value="">請選擇機構名稱</option>
-                                                {[...new Set([...ALL_UNITS, ...customUnits])].map(u => <option key={u} value={u}>{u}</option>)}
-                                                <option value="__custom__">✔ 手動輸入其他名稱...</option>
-                                            </select>
-                                            <input type="text" value={newUnit} onChange={e => setNewUnit(e.target.value)} placeholder="手動輸入或從上方選擇..." className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
-                                        </div>
-                                        <button type="submit" disabled={creating} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-700 disabled:opacity-50">
-                                            {creating ? '建立中...' : '建立帳號'}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+                                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col gap-6">
+                                    <div>
+                                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">👤 新增人員帳號</h3>
+                                        <form onSubmit={handleCreateUser} className="space-y-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">電子郵件</label>
+                                                <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} required className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">密碼 (至少6碼)</label>
+                                                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">機構/單位</label>
+                                                <select value={[...ALL_UNITS, ...customUnits].includes(newUnit) ? newUnit : (newUnit ? '__custom__' : '')} onChange={e => { if (e.target.value !== '__custom__') setNewUnit(e.target.value); }} className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400 bg-white mb-1">
+                                                    <option value="">請選擇機構名稱</option>
+                                                    {[...new Set([...ALL_UNITS, ...customUnits])].map(u => <option key={u} value={u}>{u}</option>)}
+                                                    <option value="__custom__">✔ 手動輸入其他名稱...</option>
+                                                </select>
+                                                <input type="text" value={newUnit} onChange={e => setNewUnit(e.target.value)} placeholder="手動輸入或從上方選擇..." className="w-full p-2 rounded-lg border text-sm outline-none focus:border-blue-400" />
+                                            </div>
+                                            <button type="submit" disabled={creating} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-700 disabled:opacity-50">
+                                                {creating ? '建立中...' : '建立帳號'}
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                    <div className="pt-6 border-t border-slate-100">
+                                        <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">☁️ 雲端資料同步</h3>
+                                        <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">將此電腦目前的「稽核紀錄、題庫、人員名單」上傳至雲端，供所有登入者共享。</p>
+                                        <button onClick={handleSyncToCloud} disabled={syncStatus.loading}
+                                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm">
+                                            {syncStatus.loading ? '同步中...' : <><IconImport /> 同步所有資料至雲端</>}
                                         </button>
-                                    </form>
-                                </div>
-
-                                <div className="pt-6 border-t border-slate-100">
-                                    <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">☁️ 雲端資料同步</h3>
-                                    <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">將此電腦目前的「稽核紀錄、題庫、人員名單」上傳至雲端，供所有登入者共享。</p>
-                                    <button onClick={handleSyncToCloud} disabled={syncStatus.loading}
-                                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm">
-                                        {syncStatus.loading ? '同步中...' : <><IconImport /> 同步所有資料至雲端</>}
-                                    </button>
-                                    {syncStatus.message && (
-                                        <p className={`mt-3 text-xs font-bold text-center ${syncStatus.message.includes('❌') ? 'text-red-500' : 'text-emerald-600'}`}>
-                                            {syncStatus.message}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="pt-6 border-t border-slate-100">
-                                    <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">📄 匯入新表單題庫</h3>
-                                    <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">匯入自訂的 Excel 或 Word 檔案作為題庫，匯入後即可在現場考評中使用。</p>
-                                    <label className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm cursor-pointer">
-                                        <IconImport /> 點擊選擇檔案上傳<input type="file" accept=".docx, .xlsx, .xls" onChange={handleTemplateUpload} className="hidden" />
-                                    </label>
-                                </div>
-                                <div className="pt-6 border-t border-slate-100">
-                                    <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">💾 資料搬家與備份</h3>
-                                    <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">匯出完整備份 JSON 以便日後搬家還原，或從備份檔案匯入歷史資料。</p>
-                                    <div className="flex flex-col gap-2">
-                                        <button onClick={handleExportBackup} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm">
-                                            <IconDownload /> 匯出所有資料 (備份)
-                                        </button>
-                                        <label className="w-full bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-300 font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm cursor-pointer">
-                                            <IconImport /> 匯入備份資料 (搬家)<input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+                                        {syncStatus.message && (
+                                            <p className={`mt-3 text-xs font-bold text-center ${syncStatus.message.includes('❌') ? 'text-red-500' : 'text-emerald-600'}`}>
+                                                {syncStatus.message}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="pt-6 border-t border-slate-100">
+                                        <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">📄 匯入新表單題庫</h3>
+                                        <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">匯入自訂的 Excel 或 Word 檔案作為題庫，匯入後即可在現場考評中使用。</p>
+                                        <label className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm cursor-pointer">
+                                            <IconImport /> 點擊選擇檔案上傳<input type="file" accept=".docx, .xlsx, .xls" onChange={handleTemplateUpload} className="hidden" />
                                         </label>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div className="md:col-span-2">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="font-bold text-slate-700">使用者列表 ({users.length})</h3>
-                                    <div className="flex gap-2">
-                                        <button onClick={handleFixUnits} disabled={loadingUsers} className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.22-10.27l-3.27 3.27"/></svg> 自動修正機構名稱
-                                        </button>
-                                        <button onClick={fetchUsers} disabled={loadingUsers} className="text-xs bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-bold text-slate-600">重新整理</button>
+                                    <div className="pt-6 border-t border-slate-100">
+                                        <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">💾 資料搬家與備份</h3>
+                                        <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">匯出完整備份 JSON 以便日後搬家還原，或從備份檔案匯入歷史資料。</p>
+                                        <div className="flex flex-col gap-2">
+                                            <button onClick={handleExportBackup} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm">
+                                                <IconDownload /> 匯出所有資料 (備份)
+                                            </button>
+                                            <label className="w-full bg-white hover:bg-slate-50 text-indigo-700 border border-indigo-300 font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm text-sm cursor-pointer">
+                                                <IconImport /> 匯入備份資料 (搬家)<input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="bg-white border rounded-xl overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-slate-100 text-slate-600 sticky top-0">
-                                            <tr>
-                                                <th className="p-3 font-bold">Email</th>
-                                                <th className="p-3 font-bold">機構名稱</th>
-                                                <th className="p-3 font-bold">建立時間</th>
-                                                <th className="p-3 font-bold text-center">操作</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {users.map(u => (
-                                                <tr key={u.id} className="hover:bg-slate-50">
-                                                    <td className="p-3 text-slate-800">{u.email}</td>
-                                                    <td className="p-3 text-slate-800 font-bold group">
-                                                        {u.user_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}
-                                                        <button onClick={() => openEditUnitModal(u.id, u.email, u.user_metadata?.unit)} title="修改機構" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
-                                                    </td>
-                                                    <td className="p-3 text-slate-500 text-xs">{new Date(u.created_at).toLocaleString()}</td>
-                                                    <td className="p-3 text-center flex justify-center gap-2">
-                                                        <button onClick={() => handleResetPassword(u.id, u.email)} title="重置密碼" className="text-amber-500 hover:text-amber-700 p-1 bg-amber-50 hover:bg-amber-100 rounded">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
-                                                        </button>
-                                                        <button onClick={() => handleDeleteUser(u.id)} title="刪除帳號" className="text-red-400 hover:text-red-600 p-1 bg-red-50 hover:bg-red-100 rounded">
-                                                            <IconTrash />
-                                                        </button>
-                                                    </td>
+
+                                <div className="md:col-span-2">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="font-bold text-slate-700">使用者列表 ({users.length})</h3>
+                                        <div className="flex gap-2">
+                                            <button onClick={handleFixUnits} disabled={loadingUsers} className="text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.22-10.27l-3.27 3.27" /></svg> 自動修正機構名稱
+                                            </button>
+                                            <button onClick={fetchUsers} disabled={loadingUsers} className="text-xs bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-bold text-slate-600">重新整理</button>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white border rounded-xl overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-slate-100 text-slate-600 sticky top-0">
+                                                <tr>
+                                                    <th className="p-3 font-bold">Email</th>
+                                                    <th className="p-3 font-bold">機構名稱</th>
+                                                    <th className="p-3 font-bold">建立時間</th>
+                                                    <th className="p-3 font-bold text-center">操作</th>
                                                 </tr>
-                                            ))}
-                                            {users.length === 0 && !loadingUsers && (
-                                                <tr><td colSpan="3" className="p-6 text-center text-slate-400">尚無使用者資料</td></tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {users.map(u => (
+                                                    <tr key={u.id} className="hover:bg-slate-50">
+                                                        <td className="p-3 text-slate-800">{u.email}</td>
+                                                        <td className="p-3 text-slate-800 font-bold group">
+                                                            {u.user_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}
+                                                            <button onClick={() => openEditUnitModal(u.id, u.email, u.user_metadata?.unit)} title="修改機構" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
+                                                        </td>
+                                                        <td className="p-3 text-slate-500 text-xs">{new Date(u.created_at).toLocaleString()}</td>
+                                                        <td className="p-3 text-center flex justify-center gap-2">
+                                                            <button onClick={() => handleResetPassword(u.id, u.email)} title="重置密碼" className="text-amber-500 hover:text-amber-700 p-1 bg-amber-50 hover:bg-amber-100 rounded">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                                                            </button>
+                                                            <button onClick={() => handleDeleteUser(u.id)} title="刪除帳號" className="text-red-400 hover:text-red-600 p-1 bg-red-50 hover:bg-red-100 rounded">
+                                                                <IconTrash />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {users.length === 0 && !loadingUsers && (
+                                                    <tr><td colSpan="3" className="p-6 text-center text-slate-400">尚無使用者資料</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                {editUnitModal.open && (
-                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 border border-slate-100">
-                            <h3 className="font-bold text-slate-800 text-lg">✏️ 修改所屬機構</h3>
-                            <p className="text-xs text-slate-500">{editUnitModal.userEmail}</p>
-                            <select
-                                value={ALL_UNITS.includes(editUnitModal.value) ? editUnitModal.value : (editUnitModal.value ? '__custom__' : '')}
-                                onChange={e => { if (e.target.value !== '__custom__') setEditUnitModal(m => ({ ...m, value: e.target.value })); }}
-                                className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm bg-white">
-                                <option value="">-- 清除（無機構）--</option>
-                                {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                                <option value="__custom__">✔ 手動輸入其他名稱...</option>
-                            </select>
-                            <input
-                                type="text"
-                                value={editUnitModal.value}
-                                onChange={e => setEditUnitModal(m => ({ ...m, value: e.target.value }))}
-                                placeholder="手動輸入或從上方選擇..."
-                                className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm" />
-                            <div className="flex gap-3 pt-2">
-                                <button onClick={() => setEditUnitModal({ open: false, userId: null, userEmail: '', value: '' })} className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50">取消</button>
-                                <button onClick={handleEditUnitSave} disabled={loadingUsers} className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50">{loadingUsers ? '儲存中...' : '確認儲存'}</button>
+                    {editUnitModal.open && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 border border-slate-100">
+                                <h3 className="font-bold text-slate-800 text-lg">✏️ 修改所屬機構</h3>
+                                <p className="text-xs text-slate-500">{editUnitModal.userEmail}</p>
+                                <select
+                                    value={ALL_UNITS.includes(editUnitModal.value) ? editUnitModal.value : (editUnitModal.value ? '__custom__' : '')}
+                                    onChange={e => { if (e.target.value !== '__custom__') setEditUnitModal(m => ({ ...m, value: e.target.value })); }}
+                                    className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm bg-white">
+                                    <option value="">-- 清除（無機構）--</option>
+                                    {ALL_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                    <option value="__custom__">✔ 手動輸入其他名稱...</option>
+                                </select>
+                                <input
+                                    type="text"
+                                    value={editUnitModal.value}
+                                    onChange={e => setEditUnitModal(m => ({ ...m, value: e.target.value }))}
+                                    placeholder="手動輸入或從上方選擇..."
+                                    className="w-full p-2.5 rounded-xl border border-slate-200 outline-none focus:border-blue-400 text-sm" />
+                                <div className="flex gap-3 pt-2">
+                                    <button onClick={() => setEditUnitModal({ open: false, userId: null, userEmail: '', value: '' })} className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50">取消</button>
+                                    <button onClick={handleEditUnitSave} disabled={loadingUsers} className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm disabled:opacity-50">{loadingUsers ? '儲存中...' : '確認儲存'}</button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
                 </>
             );
         };
@@ -1391,7 +1391,7 @@
 
             useEffect(() => {
                 let isMounted = true;
-                
+
                 // 設定 3 秒強制解除 loading (以防 Supabase 卡住)
                 const fallbackTimeout = setTimeout(() => {
                     if (isMounted) setLoadingAuth(false);
@@ -1434,7 +1434,7 @@
             const [checklist, setChecklist] = useState([]);
             const [showPersonnelDropdown, setShowPersonnelDropdown] = useState(false);
             const targetInputRef = React.useRef(null);
-            
+
             const [showPwdModal, setShowPwdModal] = useState(false);
             const [newPwd, setNewPwd] = useState('');
             const [confirmPwd, setConfirmPwd] = useState('');
@@ -1443,7 +1443,7 @@
 
             const userRole = session?.user?.user_metadata?.role;
             let userUnit = session?.user?.user_metadata?.unit;
-            
+
             if (!userUnit && session?.user?.email) {
                 userUnit = EMAIL_TO_UNIT_MAP[session.user.email.toLowerCase()] || '';
             }
@@ -1471,7 +1471,7 @@
             const [selectedYear, setSelectedYear] = useState(availableYears[0] || new Date().getFullYear().toString());
 
             const [customUnits, setCustomUnits] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('custom_units_list') || '[]'); } catch(e) { return []; }
+                try { return JSON.parse(localStorage.getItem('custom_units_list') || '[]'); } catch (e) { return []; }
             });
             const dynamicUnits = useMemo(() => {
                 return [...new Set([...ALL_UNITS, ...customUnits])];
@@ -1495,11 +1495,11 @@
 
             const [templates, setTemplates] = useState(() => {
                 const saved = Storage.getTemplates();
-                const isMigrated = localStorage.getItem('tpl_migrated_v19');
+                const isMigrated = localStorage.getItem('tpl_migrated_v20');
                 if (!isMigrated) {
                     const uniqueSaved = saved.filter(s => !DEFAULT_TEMPLATES.some(d => d.id === s.id));
                     const merged = [...DEFAULT_TEMPLATES, ...uniqueSaved];
-                    localStorage.setItem('tpl_migrated_v19', 'true');
+                    localStorage.setItem('tpl_migrated_v20', 'true');
                     Storage.saveTemplates(merged);
                     return merged;
                 }
@@ -1508,10 +1508,10 @@
 
             // 確保沒有 migration tag 時自動重置
             useEffect(() => {
-                const checkMigrated = localStorage.getItem('tpl_migrated_v19');
+                const checkMigrated = localStorage.getItem('tpl_migrated_v20');
                 if (!checkMigrated) {
                     setTemplates(DEFAULT_TEMPLATES);
-                    localStorage.setItem('tpl_migrated_v19', 'true');
+                    localStorage.setItem('tpl_migrated_v20', 'true');
                 }
             }, []);
 
@@ -1555,20 +1555,20 @@
                         setRecords(recs.map(r => {
                             const data = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
                             return {
-                                id: r.id, 
-                                date: data.date || r.audit_date || (r.created_at || '').split('T')[0], 
-                                templateId: data.templateId || r.template_id, 
+                                id: r.id,
+                                date: data.date || r.audit_date || (r.created_at || '').split('T')[0],
+                                templateId: data.templateId || r.template_id,
                                 auditName: data.auditName || r.audit_name || '',
-                                unitCategory: data.unitCategory || r.unit_category || '', 
-                                unit: String(data.unit || r.unit || '').trim(), 
-                                target: data.target || r.target || '', 
+                                unitCategory: data.unitCategory || r.unit_category || '',
+                                unit: String(data.unit || r.unit || '').trim(),
+                                target: data.target || r.target || '',
                                 jobTitle: data.jobTitle || r.job_title || '',
-                                auditor: data.auditor || r.auditor || '', 
-                                score: data.score !== undefined ? data.score : r.score, 
-                                score2: data.score2 !== undefined ? data.score2 : r.score2, 
+                                auditor: data.auditor || r.auditor || '',
+                                score: data.score !== undefined ? data.score : r.score,
+                                score2: data.score2 !== undefined ? data.score2 : r.score2,
                                 notes: data.notes || r.notes || '',
-                                isDual: data.isDual !== undefined ? data.isDual : r.is_dual, 
-                                technique: data.technique || r.technique || '', 
+                                isDual: data.isDual !== undefined ? data.isDual : r.is_dual,
+                                technique: data.technique || r.technique || '',
                                 checklist: data.checklist || r.checklist || []
                             };
                         }));
@@ -2105,7 +2105,7 @@
                 if (selectedIds.size === 0) return showAlert('請先勾選資料！');
                 showConfirm(`確定要刪除選取的 ${selectedIds.size} 筆資料？`, async () => {
                     const idsToDelete = Array.from(selectedIds);
-                    
+
                     // 如果已登入，同步刪除雲端資料
                     if (session) {
                         try {
@@ -2163,12 +2163,12 @@
                 const headerText = `[圖案] 新北市私立${currentUnit}`;
 
                 const wb = window.XLSX.utils.book_new();
-                
+
                 // Sheet 1
                 const ws1Data = formatData(careReportData);
                 const ws1 = window.XLSX.utils.aoa_to_sheet([[headerText]]);
                 window.XLSX.utils.sheet_add_json(ws1, ws1Data, { origin: "A2" });
-                
+
                 // Sheet 2
                 const ws2Data = formatData(equipReportData);
                 const ws2 = window.XLSX.utils.aoa_to_sheet([[headerText]]);
@@ -2536,12 +2536,12 @@
 
                     const statWs = window.XLSX.utils.aoa_to_sheet(statWsData);
                     applyGlobalStyle(statWs);
-                    
+
                     const analysisCellRef = window.XLSX.utils.encode_cell({ r: analysisRowIdx, c: 1 });
                     if (statWs[analysisCellRef]) {
-                        statWs[analysisCellRef].s = { 
-                            ...statWs[analysisCellRef].s, 
-                            alignment: { horizontal: "left", vertical: "top", wrapText: true } 
+                        statWs[analysisCellRef].s = {
+                            ...statWs[analysisCellRef].s,
+                            alignment: { horizontal: "left", vertical: "top", wrapText: true }
                         };
                     }
 
@@ -2605,7 +2605,7 @@
 
                         const ws = window.XLSX.utils.aoa_to_sheet([[headerText]]);
                         window.XLSX.utils.sheet_add_json(ws, wsData, { origin: "A2" });
-                        
+
                         const range = window.XLSX.utils.decode_range(ws['!ref']);
                         ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } }];
                         ws['A1'].s = { alignment: { horizontal: "center", vertical: "center" }, font: { bold: true, sz: 14 } };
@@ -2689,11 +2689,11 @@
                 if (formData.isDual && checklist.length === 0) return showAlert('至少需新增一個洗手時機！');
 
                 const finalAuditName = formData.isDual ? `${formData.auditName} (${formData.technique})` : formData.auditName;
-                const newRec = { 
-                    ...formData, 
-                    auditName: finalAuditName, 
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5), 
-                    checklist 
+                const newRec = {
+                    ...formData,
+                    auditName: finalAuditName,
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                    checklist
                 };
 
                 // 更新本地狀態
@@ -2835,7 +2835,7 @@
                                 } else {
                                     finalUnit = parsedUnit || '未指派單位';
                                 }
-                                
+
                                 return {
                                     id: 'import_' + Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5) + '_' + index,
                                     date: normalizeDate(row['稽核日期'] || row['日期']),
@@ -2976,7 +2976,7 @@
                 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
                     <nav className="bg-primary text-white p-4 shadow-lg sticky top-0 z-50 flex justify-between items-center">
                         <div className="flex flex-col"><h1 className="font-bold text-lg tracking-tight">清福技術考稽核系統</h1><span className="text-[9px] bg-white/20 px-2 py-0.5 rounded self-start uppercase">1.0版 (穩定發布版)</span></div>
-                        
+
                         {session && (
                             <div className="flex flex-wrap items-center gap-1 md:gap-2 bg-white/10 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs">
                                 <span className="font-bold">{userUnit ? `[${userUnit}]` : ''}</span>
@@ -3127,11 +3127,11 @@
                                             </div>
                                             <div className="md:col-span-1 relative">
                                                 <label className="text-[10px] font-bold text-slate-400 uppercase">職務</label>
-                                                <input 
-                                                    list="jobTitlesList" type="text" placeholder="職務" 
-                                                    value={formData.jobTitle || ''} 
-                                                    onChange={e => setFormData({ ...formData, jobTitle: e.target.value })} 
-                                                    className="w-full p-2 border border-slate-200 rounded text-sm outline-none bg-white focus:border-primary" 
+                                                <input
+                                                    list="jobTitlesList" type="text" placeholder="職務"
+                                                    value={formData.jobTitle || ''}
+                                                    onChange={e => setFormData({ ...formData, jobTitle: e.target.value })}
+                                                    className="w-full p-2 border border-slate-200 rounded text-sm outline-none bg-white focus:border-primary"
                                                 />
                                                 <datalist id="jobTitlesList">
                                                     <option value="護理師" />
@@ -3755,7 +3755,7 @@
                             </div>
                         </div>
                     )}
-                    <div style={{fontSize:"10px", color:"#999", padding:"10px", textAlign:"center", borderTop:"1px dashed #eee"}}>{debugInfo || "\u6b63\u5728\u8f09\u5165\u96f2\u7aef\u8a3a\u65b7\u8cc7\u8a0a..."}</div>
+                    <div style={{ fontSize: "10px", color: "#999", padding: "10px", textAlign: "center", borderTop: "1px dashed #eee" }}>{debugInfo || "\u6b63\u5728\u8f09\u5165\u96f2\u7aef\u8a3a\u65b7\u8cc7\u8a0a..."}</div>
                 </div>
             );
         };
