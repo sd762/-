@@ -2282,9 +2282,18 @@
 
                 const borderStyle = { style: "thin", color: { rgb: "000000" } };
                 const applyGlobalStyle = (ws) => {
-                    for (let c in ws) {
-                        if (c[0] === '!') continue;
-                        if (ws[c]) ws[c].s = { alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle } };
+                    const range = window.XLSX.utils.decode_range(ws['!ref']);
+                    for (let r = range.s.r; r <= range.e.r; r++) {
+                        for (let c = range.s.c; c <= range.e.c; c++) {
+                            const ref = window.XLSX.utils.encode_cell({ r, c });
+                            if (!ws[ref]) ws[ref] = { v: "" };
+                            ws[ref].s = { 
+                                alignment: { horizontal: "center", vertical: "center", wrapText: true }, 
+                                border: { 
+                                    top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle 
+                                } 
+                            };
+                        }
                     }
                 };
                 const addReviewerRow = (ws) => {
@@ -2375,7 +2384,12 @@
                         merges1.push({ s: { r: 5, c: c }, e: { r: 5, c: c + 2 } });   // item
                     });
                     detailWs['!merges'] = merges1;
-                    detailWs['A1'].s = { alignment: { horizontal: "center", vertical: "center" }, font: { bold: true, sz: 14 } };
+                    // 修正：標題也要保留邊框
+                    detailWs['A1'].s = { 
+                        alignment: { horizontal: "center", vertical: "center" }, 
+                        font: { bold: true, sz: 14 },
+                        border: { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+                    };
                     addReviewerRow(detailWs);
                     window.XLSX.utils.book_append_sheet(wb, detailWs, "稽核明細");
 
@@ -2572,7 +2586,27 @@
                         { s: { r: 6 + handHygieneTargets.length, c: 1 }, e: { r: 6 + handHygieneTargets.length, c: 13 } }
                     ];
                     statWs['!merges'] = merges2;
-                    statWs['A1'].s = { alignment: { horizontal: "center", vertical: "center" }, font: { bold: true, sz: 14 } };
+                    // 強制標題與說明欄位保留邊框
+                    statWs['A1'].s = { 
+                        alignment: { horizontal: "center", vertical: "center" }, 
+                        font: { bold: true, sz: 14 },
+                        border: { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+                    };
+                    const analysisRef = window.XLSX.utils.encode_cell({ r: analysisRowIdx, c: 1 });
+                    if (statWs[analysisRef]) {
+                        statWs[analysisRef].s = {
+                            alignment: { horizontal: "left", vertical: "top", wrapText: true },
+                            border: { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+                        };
+                    }
+                    const analysisLabelRef = window.XLSX.utils.encode_cell({ r: analysisRowIdx, c: 0 });
+                    if (statWs[analysisLabelRef]) {
+                        statWs[analysisLabelRef].s = {
+                            alignment: { horizontal: "center", vertical: "center" },
+                            font: { bold: true },
+                            border: { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+                        };
+                    }
                     addReviewerRow(statWs);
                     window.XLSX.utils.book_append_sheet(wb, statWs, "統計報表");
                 }
