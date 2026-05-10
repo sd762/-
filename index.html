@@ -1555,10 +1555,21 @@
                         setRecords(recs.map(r => {
                             const data = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
                             return {
-                                id: r.id, date: data.date || (r.created_at || '').split('T')[0], templateId: data.templateId, auditName: data.auditName || '',
-                                unitCategory: data.unitCategory || '', unit: String(data.unit || '').trim(), target: data.target || '', jobTitle: data.jobTitle || '',
-                                auditor: data.auditor || '', score: data.score, score2: data.score2, notes: data.notes || '',
-                                isDual: data.isDual, technique: data.technique || '', checklist: data.checklist || []
+                                id: r.id, 
+                                date: data.date || r.audit_date || (r.created_at || '').split('T')[0], 
+                                templateId: data.templateId || r.template_id, 
+                                auditName: data.auditName || r.audit_name || '',
+                                unitCategory: data.unitCategory || r.unit_category || '', 
+                                unit: String(data.unit || r.unit || '').trim(), 
+                                target: data.target || r.target || '', 
+                                jobTitle: data.jobTitle || r.job_title || '',
+                                auditor: data.auditor || r.auditor || '', 
+                                score: data.score !== undefined ? data.score : r.score, 
+                                score2: data.score2 !== undefined ? data.score2 : r.score2, 
+                                notes: data.notes || r.notes || '',
+                                isDual: data.isDual !== undefined ? data.isDual : r.is_dual, 
+                                technique: data.technique || r.technique || '', 
+                                checklist: data.checklist || r.checklist || []
                             };
                         }));
                     } else {
@@ -2700,20 +2711,22 @@
                                 'Prefer': 'return=minimal'
                             },
                             body: JSON.stringify({
-                                audit_date: newRec.date,
-                                template_id: currentTemplateId,
-                                audit_name: newRec.auditName,
-                                unit_category: newRec.unitCategory,
-                                unit: String(newRec.unit || '').trim(),
-                                target: newRec.target,
-                                job_title: newRec.jobTitle,
-                                auditor: newRec.auditor,
-                                score: newRec.score,
-                                score2: newRec.score2,
-                                notes: newRec.notes,
-                                is_dual: !!newRec.isDual,
-                                technique: newRec.technique,
-                                checklist: newRec.checklist,
+                                audit_content: {
+                                    date: newRec.date,
+                                    templateId: currentTemplateId,
+                                    auditName: newRec.auditName,
+                                    unitCategory: newRec.unitCategory,
+                                    unit: String(newRec.unit || '').trim(),
+                                    target: newRec.target,
+                                    jobTitle: newRec.jobTitle,
+                                    auditor: newRec.auditor,
+                                    score: newRec.score,
+                                    score2: newRec.score2,
+                                    notes: newRec.notes,
+                                    isDual: !!newRec.isDual,
+                                    technique: newRec.technique,
+                                    checklist: newRec.checklist
+                                },
                                 user_id: session.user.id
                             })
                         });
