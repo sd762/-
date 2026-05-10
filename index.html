@@ -1515,6 +1515,7 @@
                         const customOnes = prev.filter(s => !DEFAULT_TEMPLATES.some(d => d.id === s.id));
                         const merged = [...DEFAULT_TEMPLATES, ...customOnes];
                         Storage.saveTemplates(merged);
+                        // 如果有登入，我們稍後在 loadAllDataFromCloud 處理雲端同步
                         return merged;
                     });
                     localStorage.setItem('tpl_migrated_v22', 'true');
@@ -1588,11 +1589,19 @@
                     if (tplRes.ok) {
                         const tpls = await tplRes.json();
                         if (tpls.length > 0) {
-                            setTemplates(tpls.map(t => ({
+                            const cloudTpls = tpls.map(t => ({
                                 id: t.id, name: t.name, mainCategory: t.main_category, subCategory: t.sub_category,
                                 targetStaff: t.target_staff, responsible: t.responsible, frequency: t.frequency,
                                 schedule: t.schedule, threshold: t.threshold, isDual: t.is_dual, items: t.items
-                            })));
+                            }));
+                            
+                            // 關鍵修復：強制以程式碼中的 DEFAULT_TEMPLATES 為主，避免被雲端舊資料覆蓋
+                            setTemplates(prev => {
+                                const customCloudTpls = cloudTpls.filter(ct => !DEFAULT_TEMPLATES.some(dt => dt.id === ct.id));
+                                const merged = [...DEFAULT_TEMPLATES, ...customCloudTpls];
+                                Storage.saveTemplates(merged);
+                                return merged;
+                            });
                         }
                     }
 
@@ -2981,7 +2990,7 @@
             return (
                 <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
                     <nav className="bg-primary text-white p-4 shadow-lg sticky top-0 z-50 flex justify-between items-center">
-                        <div className="flex flex-col"><h1 className="font-bold text-lg tracking-tight">清福技術考稽核系統</h1><span className="text-[9px] bg-white/20 px-2 py-0.5 rounded self-start uppercase">1.0版 (穩定發布版) [v22]</span></div>
+                        <div className="flex flex-col"><h1 className="font-bold text-lg tracking-tight">清福技術考稽核系統</h1><span className="text-[9px] bg-white/20 px-2 py-0.5 rounded self-start uppercase">1.0版 (穩定發布版) [v23]</span></div>
 
                         {session && (
                             <div className="flex flex-wrap items-center gap-1 md:gap-2 bg-white/10 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-[10px] md:text-xs">
