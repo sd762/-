@@ -119,7 +119,7 @@
             'hok6@hok2.com.tw': '清山養老院', 'hok3@hok2.com.tw': '清心養老院', 'hok7@hok1.com.tw': '清日養老院',
             'hok11@hok3.com.tw': '清水養老院', 'hok4@hok2.com.tw': '清平養老院', 'hok8@hok1.com.tw': '清安養老院',
             'hok5@hok2.com.tw': '清春養老院', 'hok9@hok3.com.tw': '清泉養老院', 'hok15@hok6.com.tw': '清風養老院',
-            'hok2@hok2.com.tw': '清氣養老院', 'hok13@hok6.com.tw': '清涼養老院', 'hok12@hok6.com.tw': '清清養老院',
+            'hok2@hok6.com.tw': '清氣養老院', 'hok13@hok6.com.tw': '清涼養老院', 'hok12@hok6.com.tw': '清清養老院',
             'hok14@hok6.com.tw': '清景養老院', 'hok10@hok3.com.tw': '清照養老院', 'hok16@hok6.com.tw': '清福一館',
             'hok17@hok6.com.tw': '清福二館', 'hok18@hok6.com.tw': '清福三館', 'hok1@hok2.com.tw': '清福養老院',
             'hok2f@hok6.com.tw': '清福護理之家', 'test@hok6.com.tw': '測試機構'
@@ -1375,6 +1375,7 @@
             const [records, setRecords] = useState(() => Storage.getRecords());
             const [reportSettings, setReportSettings] = useState(() => Storage.getSettings());
             const [personnelData, setPersonnelData] = useState(() => Storage.getPersonnel());
+            const personnelSyncedRef = React.useRef(false);
             const [showPersonnelModal, setShowPersonnelModal] = useState(false);
             const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null, onCancel: null });
             const [filterMonth, setFilterMonth] = useState('');
@@ -1605,22 +1606,65 @@
                         }
                     }
 
-                    // 3. \u8b80\u53d6\u4eba\u54e1\u540d\u55ae
+                    // 3. 讀取人員名單
                     const perRes = await fetch(`${supabaseUrl}/rest/v1/audit_personnel?select=*`, { headers });
                     if (perRes.ok) {
                         const pers = await perRes.json();
-                        const pMap = {};
-                        pers.forEach(p => {
-                            if (!pMap[p.category]) pMap[p.category] = [];
-                            pMap[p.category].push(p.name);
-                        });
-                        if (Object.keys(pMap).length > 0) setPersonnelData(pMap);
+                        if (pers.length > 0) {
+                            const pMap = {};
+                            pers.forEach(p => {
+                                const unit = p.unit || '未分配';
+                                const cat = p.category;
+                                if (!pMap[unit]) pMap[unit] = {};
+                                if (!pMap[unit][cat]) pMap[unit][cat] = [];
+                                pMap[unit][cat].push(p.name);
+                            });
+                            setPersonnelData(pMap);
+                            Storage.savePersonnel(pMap);
+                        }
+                        personnelSyncedRef.current = true;
                     }
                 } catch (err) {
                     console.error('\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:', err);
                     return null;
                 }
                 return cloudIds;
+            };
+
+            // 將 personnelData 完整同步至 Supabase（刪除舊資料後重新插入）
+            const syncPersonnelToCloud = async (data, currentSession) => {
+                const sess = currentSession || session;
+                if (!sess) return;
+                const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
+                const headers = {
+                    'apikey': anonKey,
+                    'Authorization': `Bearer ${sess.access_token}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal'
+                };
+                try {
+                    // 刪除此帳號現有的所有人員資料
+                    await fetch(`${supabaseUrl}/rest/v1/audit_personnel?user_id=eq.${sess.user.id}`, {
+                        method: 'DELETE', headers
+                    });
+                    // 重新整理為扁平陣列並批次插入
+                    const rows = [];
+                    Object.entries(data).forEach(([unit, cats]) => {
+                        Object.entries(cats).forEach(([cat, names]) => {
+                            names.forEach(name => {
+                                rows.push({ user_id: sess.user.id, unit, category: cat, name });
+                            });
+                        });
+                    });
+                    if (rows.length > 0) {
+                        await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
+                            method: 'POST', headers, body: JSON.stringify(rows)
+                        });
+                    }
+                    console.log(`人員名單已同步至雲端，共 ${rows.length} 筆。`);
+                } catch (err) {
+                    console.error('人員名單雲端同步失敗:', err);
+                }
             };
 
             useEffect(() => {
@@ -1686,7 +1730,13 @@
             useEffect(() => { Storage.saveRecords(records); }, [records]);
             useEffect(() => { Storage.saveTemplates(templates); }, [templates]);
             useEffect(() => { Storage.saveSettings(reportSettings); }, [reportSettings]);
-            useEffect(() => { Storage.savePersonnel(personnelData); }, [personnelData]);
+            useEffect(() => {
+                Storage.savePersonnel(personnelData);
+                // 僅在初次雲端載入完成後才觸發寫回，避免登入時用本地舊資料覆蓋雲端
+                if (session && personnelSyncedRef.current) {
+                    syncPersonnelToCloud(personnelData);
+                }
+            }, [personnelData]);
 
             useEffect(() => {
                 const handleClickOutside = (e) => {
