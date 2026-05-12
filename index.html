@@ -372,7 +372,7 @@
             };
 
             const handleDeleteUser = async (userId) => {
-                if (!window.confirm('確定要永久刪除此帳號嗎？')) return;
+                if (!window.confirm('確定要永久刪除此帳號嗎？\n(注意：系統將一併刪除該帳號所建立的歷史稽核紀錄與人員名單，此動作無法復原！)')) return;
                 setError(null);
 
                 try {
@@ -380,27 +380,16 @@
                         auth: { autoRefreshToken: false, persistSession: false }
                     });
 
+                    // 直接強制清空關聯資料，避免外鍵限制
+                    const { error: err1 } = await localAdminClient.from('audit_records').delete().eq('user_id', userId);
+                    if (err1) console.warn("刪除稽核紀錄失敗", err1);
+                    const { error: err2 } = await localAdminClient.from('audit_personnel').delete().eq('user_id', userId);
+                    if (err2) console.warn("刪除人員名單失敗", err2);
+
                     const { error } = await localAdminClient.auth.admin.deleteUser(userId);
 
                     if (error) {
-                        let errMsg = typeof error.message === 'string' ? error.message : "刪除帳號失敗";
-                        let status = error.status || 500;
-                        
-                        if (errMsg.toLowerCase().includes('foreign key') || errMsg.toLowerCase().includes('database error') || status === 500) {
-                            if (window.confirm('此帳號仍有綁定的歷史資料，無法直接刪除。\n是否要「連同該帳號建立的所有資料一併刪除」？\n(警告：此動作無法復原)')) {
-                                // 刪除關聯資料
-                                await localAdminClient.from('audit_records').delete().eq('user_id', userId);
-                                await localAdminClient.from('audit_personnel').delete().eq('user_id', userId);
-                                
-                                // 再次嘗試刪除帳號
-                                const retry = await localAdminClient.auth.admin.deleteUser(userId);
-                                if (retry.error) throw new Error("重試刪除帳號失敗：" + (retry.error.message || "未知錯誤"));
-                            } else {
-                                return;
-                            }
-                        } else {
-                            throw new Error(errMsg);
-                        }
+                        throw new Error(typeof error.message === 'string' ? error.message : "未知的伺服器錯誤");
                     }
                     
                     fetchUsers();
@@ -2873,7 +2862,32 @@
                         const wb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
 
                         wb.SheetNames.forEach(sheetName => {
-                            const data = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { raw: true, defval: '' });
+                            const aoa = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' });
+                            if (!aoa || aoa.length === 0) return;
+
+                            let headerRowIdx = -1;
+                            for (let i = 0; i < Math.min(10, aoa.length); i++) {
+                                const rowStr = aoa[i].join('');
+                                if (rowStr.includes('稽核日期') || rowStr.includes('日期')) {
+                                    headerRowIdx = i;
+                                    break;
+                                }
+                            }
+
+                            let data = [];
+                            if (headerRowIdx !== -1) {
+                                const headers = aoa[headerRowIdx];
+                                for (let i = headerRowIdx + 1; i < aoa.length; i++) {
+                                    const rowData = {};
+                                    headers.forEach((h, colIdx) => {
+                                        if (h) rowData[h] = aoa[i][colIdx];
+                                    });
+                                    data.push(rowData);
+                                }
+                            } else {
+                                data = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { raw: true, defval: '' });
+                            }
+
                             const validData = data.filter(row => row['稽核人員'] !== '平均總分' && (row['稽核日期'] || row['日期']) && !String(row['稽核日期'] || row['日期']).includes('覆核者'));
 
                             const imported = validData.map((row, index) => {
