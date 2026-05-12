@@ -251,7 +251,7 @@
         };
 
         // --- 系統後台組件 ---
-        const AdminPanel = ({ handleTemplateUpload, handleExportBackup, handleImportBackup }) => {
+        const AdminPanel = ({ handleTemplateUpload, handleExportBackup, handleImportBackup, session }) => {
             const [customUnits, setCustomUnits] = useState([]);
             const [newCustomUnit, setNewCustomUnit] = useState('');
             useEffect(() => {
@@ -3817,7 +3817,7 @@
                         )}
 
                         {activeTab === 'admin' && isAdmin && (
-                            <AdminPanel handleTemplateUpload={handleTemplateUpload} handleExportBackup={handleExportBackup} handleImportBackup={handleImportBackup} />
+                            <AdminPanel handleTemplateUpload={handleTemplateUpload} handleExportBackup={handleExportBackup} handleImportBackup={handleImportBackup} session={session} />
                         )}
                     </main>
 
