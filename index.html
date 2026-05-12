@@ -520,24 +520,10 @@
                 setSyncStatus({ loading: true, message: '同步中...' });
 
                 try {
-                    // 1. 同步人員名單
+                    // 1. 同步人員名單（結構為 { unit: { category: [names] } }，三層）
                     const localPersonnel = Storage.getPersonnel();
-                    const personnelToInsert = [];
-                    Object.entries(localPersonnel).forEach(([cat, names]) => {
-                        names.forEach(name => personnelToInsert.push({ category: cat, name, user_id: session?.user?.id || null }));
-                    });
-
-                    if (personnelToInsert.length > 0) {
-                        await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
-                            method: 'POST',
-                            headers: {
-                                'apikey': serviceKey,
-                                'Authorization': `Bearer ${serviceKey}`,
-                                'Content-Type': 'application/json',
-                                'Prefer': 'resolution=merge-duplicates'
-                            },
-                            body: JSON.stringify(personnelToInsert)
-                        });
+                    if (localPersonnel && Object.keys(localPersonnel).length > 0) {
+                        await syncPersonnelToCloud(localPersonnel, session);
                     }
 
                     // 2. 同步題庫 (Templates)
