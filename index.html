@@ -523,7 +523,32 @@
                     // 1. 同步人員名單（結構為 { unit: { category: [names] } }，三層）
                     const localPersonnel = Storage.getPersonnel();
                     if (localPersonnel && Object.keys(localPersonnel).length > 0) {
-                        await syncPersonnelToCloud(localPersonnel, session);
+                        const perHeaders = {
+                            'apikey': supabaseKey,
+                            'Authorization': `Bearer ${session?.access_token}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'return=minimal'
+                        };
+                        // 逐機構刪除並重新插入
+                        for (const [unit, cats] of Object.entries(localPersonnel)) {
+                            const encodedUnit = encodeURIComponent(unit);
+                            await fetch(`${supabaseUrl}/rest/v1/audit_personnel?unit=eq.${encodedUnit}`, {
+                                method: 'DELETE', headers: perHeaders
+                            });
+                            const rows = [];
+                            Object.entries(cats || {}).forEach(([cat, names]) => {
+                                (Array.isArray(names) ? names : []).forEach(name => {
+                                    if (name && String(name).trim()) {
+                                        rows.push({ user_id: session?.user?.id, unit, category: cat, name: String(name).trim() });
+                                    }
+                                });
+                            });
+                            if (rows.length > 0) {
+                                await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
+                                    method: 'POST', headers: perHeaders, body: JSON.stringify(rows)
+                                });
+                            }
+                        }
                     }
 
                     // 2. 同步題庫 (Templates)
