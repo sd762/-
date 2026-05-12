@@ -524,7 +524,7 @@
                     const localPersonnel = Storage.getPersonnel();
                     const personnelToInsert = [];
                     Object.entries(localPersonnel).forEach(([cat, names]) => {
-                        names.forEach(name => personnelToInsert.push({ category: cat, name }));
+                        names.forEach(name => personnelToInsert.push({ category: cat, name, user_id: session?.user?.id || null }));
                     });
 
                     if (personnelToInsert.length > 0) {
@@ -594,7 +594,8 @@
                                     isDual: !!r.isDual,
                                     technique: r.technique,
                                     checklist: r.checklist
-                                }
+                                },
+                                user_id: session?.user?.id || null
                             })))
                         });
                     }
