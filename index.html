@@ -1610,8 +1610,8 @@
                         }
                     }
 
-                    // 3. 讀取人員名單
-                    const perRes = await fetch(`${supabaseUrl}/rest/v1/audit_personnel?select=*`, { headers });
+                    // 3. 讀取人員名單（僅限本人建立的）
+                    const perRes = await fetch(`${supabaseUrl}/rest/v1/audit_personnel?user_id=eq.${sess.user.id}&select=*`, { headers });
                     if (perRes.ok) {
                         const pers = await perRes.json();
                         if (pers.length > 0) {
