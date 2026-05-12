@@ -385,9 +385,35 @@
                     });
 
                     if (!response.ok) {
-                        const data = await response.json();
-                        throw new Error(data.msg || data.error || "刪除失敗");
+                        let errText = await response.text();
+                        let errMsg = "刪除失敗";
+                        try {
+                            const data = JSON.parse(errText);
+                            errMsg = data.msg || data.message || data.error || errMsg;
+                        } catch(e) {
+                            errMsg += ` (${response.status})`;
+                        }
+                        
+                        if (errMsg.toLowerCase().includes('foreign key') || errMsg.toLowerCase().includes('database error') || response.status === 500) {
+                            if (window.confirm('此帳號仍有綁定的歷史資料，無法直接刪除。\n是否要「連同該帳號建立的所有資料一併刪除」？\n(警告：此動作無法復原)')) {
+                                await fetch(`${supabaseUrl}/rest/v1/audit_records?user_id=eq.${userId}`, {
+                                    method: 'DELETE', headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                                });
+                                await fetch(`${supabaseUrl}/rest/v1/audit_personnel?user_id=eq.${userId}`, {
+                                    method: 'DELETE', headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                                });
+                                const retryRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+                                    method: 'DELETE', headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                                });
+                                if (!retryRes.ok) throw new Error("重試刪除帳號失敗");
+                            } else {
+                                return;
+                            }
+                        } else {
+                            throw new Error(errMsg);
+                        }
                     }
+                    
                     fetchUsers();
                 } catch (err) {
                     setError('刪除失敗：' + err.message);
@@ -3040,13 +3066,61 @@
                 const file = e.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
-                reader.onload = (evt) => {
+                reader.onload = async (evt) => {
                     try {
                         const data = JSON.parse(evt.target.result);
                         if (data.records && Array.isArray(data.records)) {
                             setRecords(data.records);
                             if (data.reportSettings) setReportSettings(data.reportSettings);
-                            showAlert('資料匯入成功！已完整還原歷史紀錄與設定。', '✅ 搬家完成');
+                            
+                            if (session) {
+                                showAlert('正在將匯入的歷史資料同步至雲端...', '⏳ 同步中');
+                                const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
+                                try {
+                                    const batch = data.records.map(r => ({
+                                        audit_content: {
+                                            date: r.date,
+                                            templateId: r.templateId || null,
+                                            auditName: r.auditName,
+                                            unitCategory: r.unitCategory || '',
+                                            unit: String(r.unit || '').trim(),
+                                            target: r.target || '',
+                                            jobTitle: r.jobTitle || '',
+                                            auditor: r.auditor || '',
+                                            score: r.score,
+                                            score2: r.score2 || null,
+                                            notes: r.notes || '',
+                                            isDual: !!r.isDual,
+                                            technique: r.technique || '',
+                                            checklist: r.checklist || []
+                                        },
+                                        user_id: session.user.id
+                                    }));
+
+                                    const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'apikey': anonKey,
+                                            'Authorization': `Bearer ${session.access_token}`,
+                                            'Content-Type': 'application/json',
+                                            'Prefer': 'return=minimal'
+                                        },
+                                        body: JSON.stringify(batch)
+                                    });
+
+                                    if (res.ok) {
+                                        showAlert('歷史資料已成功匯入並同步至雲端！即將重新整理網頁...', '✅ 搬家完成');
+                                        setTimeout(() => window.location.reload(), 2000);
+                                    } else {
+                                        const errText = await res.text();
+                                        showAlert(`雲端同步失敗：${errText}`, '❌ 錯誤');
+                                    }
+                                } catch (err) {
+                                    showAlert(`雲端同步發生例外錯誤：${err.message}`, '❌ 錯誤');
+                                }
+                            } else {
+                                showAlert('資料匯入成功！已還原至本地。(尚未登入，無法同步雲端)', '✅ 搬家完成');
+                            }
                         } else {
                             showAlert('無效的備份檔案格式。');
                         }
