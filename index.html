@@ -1610,8 +1610,16 @@
                         }
                     }
 
-                    // 3. 讀取人員名單（僅限本人建立的）
-                    const perRes = await fetch(`${supabaseUrl}/rest/v1/audit_personnel?user_id=eq.${sess.user.id}&select=*`, { headers });
+                    // 判斷權限
+                    const uUnit = sess?.user?.user_metadata?.unit || '';
+                    const isAdm = sess?.user?.email === 'sd@hok6.com.tw' || uUnit === '生福課';
+
+                    // 3. 讀取人員名單（管理員看全部，一般帳號只看自己的）
+                    let perUrl = `${supabaseUrl}/rest/v1/audit_personnel?select=*`;
+                    if (!isAdm) {
+                        perUrl += `&or=(user_id.eq.${sess.user.id},user_id.is.null)`;
+                    }
+                    const perRes = await fetch(perUrl, { headers });
                     if (perRes.ok) {
                         const pers = await perRes.json();
                         if (pers.length > 0) {
