@@ -1744,14 +1744,7 @@
             useEffect(() => {
                 if (session) {
                     loadAllDataFromCloud(session).then(async (cloudIds) => {
-                        // 自動遷移：把 localStorage 中雲端沒有的舊紀錄上傳
-                        // cloudIds 是 null 表示讀取失敗，才跳過；空 Set 表示雲端無資料，仍需上傳
                         if (cloudIds === null) return;
-                        const localRecs = Storage.getRecords();
-                        if (!localRecs || localRecs.length === 0) return;
-                        const missing = localRecs.filter(r => !cloudIds.has(String(r.id)));
-                        if (missing.length === 0) { console.log('\u96f2\u7aef\u8cc7\u6599\u5df2\u662f\u6700\u65b0\uff0c\u7121\u9700\u8fc7\u6e21\u3002'); return; }
-                        console.log(`\u81ea\u52d5\u4e0a\u50b3 ${missing.length} \u7b46\u672c\u6a5f\u672a\u540c\u6b65\u7d00\u9304\u81f3\u96f2\u7aef...`);
                         const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
                         const headers = {
                             'apikey': anonKey,
@@ -1759,44 +1752,61 @@
                             'Content-Type': 'application/json',
                             'Prefer': 'return=representation'
                         };
-                        let uploaded = 0;
-                        // 逐筆上傳以避免 id 型別問題
-                        for (const r of missing) {
-                            try {
-                                const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
-                                    method: 'POST',
-                                    headers,
-                                    body: JSON.stringify({
-                                        audit_content: {
-                                            date: r.date,
-                                            templateId: r.templateId || null,
-                                            auditName: r.auditName,
-                                            unitCategory: r.unitCategory || '',
-                                            unit: String(r.unit || '').trim(),
-                                            target: r.target || '',
-                                            jobTitle: r.jobTitle || '',
-                                            auditor: r.auditor || '',
-                                            score: r.score,
-                                            score2: r.score2 || null,
-                                            notes: r.notes || '',
-                                            isDual: !!r.isDual,
-                                            technique: r.technique || '',
-                                            checklist: r.checklist || []
-                                        },
-                                        user_id: session.user.id
-                                    })
-                                });
-                                if (res.ok) {
-                                    uploaded++;
-                                } else {
-                                    const errText = await res.text();
-                                    console.error(`\u4e0a\u50b3\u5931\u6557 [${r.auditName}]:`, res.status, errText);
+
+                        // ── 自動遷移 1：稽核紀錄 ──
+                        const localRecs = Storage.getRecords();
+                        if (localRecs && localRecs.length > 0) {
+                            const missing = localRecs.filter(r => !cloudIds.has(String(r.id)));
+                            if (missing.length > 0) {
+                                console.log(`自動上傳 ${missing.length} 筆未同步紀錄...`);
+                                let uploaded = 0;
+                                for (const r of missing) {
+                                    try {
+                                        const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                                            method: 'POST',
+                                            headers,
+                                            body: JSON.stringify({
+                                                audit_content: {
+                                                    date: r.date, templateId: r.templateId || null,
+                                                    auditName: r.auditName, unitCategory: r.unitCategory || '',
+                                                    unit: String(r.unit || '').trim(), target: r.target || '',
+                                                    jobTitle: r.jobTitle || '', auditor: r.auditor || '',
+                                                    score: r.score, score2: r.score2 || null,
+                                                    notes: r.notes || '', isDual: !!r.isDual,
+                                                    technique: r.technique || '', checklist: r.checklist || []
+                                                },
+                                                user_id: session.user.id
+                                            })
+                                        });
+                                        if (res.ok) uploaded++;
+                                        else console.error(`上傳失敗 [${r.auditName}]:`, await res.text());
+                                    } catch (e) { console.error('上傳異常:', e); }
                                 }
-                            } catch (e) { console.error("Failed", e); }
+                                console.log(`紀錄遷移完成：${uploaded}/${missing.length} 筆成功。`);
+                                if (uploaded > 0) loadAllDataFromCloud(session);
+                            } else {
+                                console.log('稽核紀錄雲端已是最新，無需遷移。');
+                            }
                         }
-                        console.log(`\u81ea\u52d5\u4e0a\u50b3\u5b8c\u6210\uff1a${uploaded}/${missing.length} \u7b46\u6210\u529f\u3002`);
-                        // 上傳後重新從雲端讀取，確保 id 一致性
-                        if (uploaded > 0) loadAllDataFromCloud(session);
+
+                        // ── 自動遷移 2：人員名單（雲端若無資料才上傳本地）──
+                        const checkPerRes = await fetch(
+                            `${supabaseUrl}/rest/v1/audit_personnel?select=id&limit=1`,
+                            { headers }
+                        );
+                        if (checkPerRes.ok) {
+                            const cloudPer = await checkPerRes.json();
+                            if (cloudPer.length === 0) {
+                                // 雲端完全空白，把 localStorage 的名單推上去
+                                const localPer = Storage.getPersonnel();
+                                const hasLocal = localPer && Object.keys(localPer).length > 0;
+                                if (hasLocal) {
+                                    console.log('雲端人員名單為空，正在遷移本地名單...');
+                                    await syncPersonnelToCloud(localPer, session);
+                                    console.log('人員名單遷移完成。');
+                                }
+                            }
+                        }
                     });
                 }
             }, [session]);
@@ -3807,7 +3817,17 @@
                                     <h3 className="font-bold text-lg text-primary flex items-center gap-2">
                                         <IconFolder /> {formData.unit} - 人員名單管理
                                     </h3>
-                                    <button onClick={() => setShowPersonnelModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={async () => {
+                                            showAlert('正在同步人員名單至雲端...', '⏳ 同步中');
+                                            await syncPersonnelToCloud(personnelData, session);
+                                            await loadAllDataFromCloud(session);
+                                            showAlert('人員名單已成功同步至雲端！其他帳號重新整理後即可看到。', '✅ 同步完成');
+                                        }} className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow transition-colors">
+                                            ☁️ 立即同步
+                                        </button>
+                                        <button onClick={() => setShowPersonnelModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto custom-scrollbar p-2">
