@@ -1650,14 +1650,18 @@
                         }
                     }
 
-                    // 3. 讀取人員名單（管理員看全部，一般帳號只看自己的）
+                    // 3. 讀取人員名單
+                    // 管理員/生福課：讀取全部。一般帳號：依「機構(unit)」讀取，非個人帳號，讓同機構不同電腦共享。
                     let perUrl = `${supabaseUrl}/rest/v1/audit_personnel?select=*`;
-                    if (!sessCanViewAll) {
-                        perUrl += `&or=(user_id.eq.${sess.user.id},user_id.is.null)`;
+                    if (!sessCanViewAll && sessUnit) {
+                        // 用 unit 過濾，確保同機構所有帳號共享名單
+                        const encodedUnit = encodeURIComponent(sessUnit);
+                        perUrl += `&unit=eq.${encodedUnit}`;
                     }
                     const perRes = await fetch(perUrl, { headers });
                     if (perRes.ok) {
                         const pers = await perRes.json();
+                        console.log('Personnel loaded:', pers.length, 'for unit:', sessUnit || 'ALL');
                         if (pers.length > 0) {
                             const pMap = {};
                             pers.forEach(p => {
@@ -1665,12 +1669,18 @@
                                 const cat = p.category;
                                 if (!pMap[unit]) pMap[unit] = {};
                                 if (!pMap[unit][cat]) pMap[unit][cat] = [];
-                                pMap[unit][cat].push(p.name);
+                                if (!pMap[unit][cat].includes(p.name)) {
+                                    pMap[unit][cat].push(p.name);
+                                }
                             });
                             setPersonnelData(pMap);
                             Storage.savePersonnel(pMap);
                         }
                         personnelSyncedRef.current = true;
+                    } else {
+                        const errText = await perRes.text();
+                        console.error('讀取人員名單失敗:', perRes.status, errText);
+                        personnelSyncedRef.current = true; // 即使失敗也標記，避免本地資料被覆蓋
                     }
                 } catch (err) {
                     console.error('\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:', err);
@@ -1679,7 +1689,7 @@
                 return cloudIds;
             };
 
-            // 將 personnelData 完整同步至 Supabase（刪除舊資料後重新插入）
+            // 將 personnelData 完整同步至 Supabase（以機構為單位：刪除該機構舊資料後重新插入）
             const syncPersonnelToCloud = async (data, currentSession) => {
                 const sess = currentSession || session;
                 if (!sess) return;
@@ -1691,25 +1701,41 @@
                     'Prefer': 'return=minimal'
                 };
                 try {
-                    // 刪除此帳號現有的所有人員資料
-                    await fetch(`${supabaseUrl}/rest/v1/audit_personnel?user_id=eq.${sess.user.id}`, {
-                        method: 'DELETE', headers
-                    });
-                    // 重新整理為扁平陣列並批次插入
-                    const rows = [];
-                    Object.entries(data).forEach(([unit, cats]) => {
+                    // 以機構(unit)為單位同步，而非個人帳號。
+                    // 先取得本次要寫入的所有機構清單
+                    const unitsToSync = Object.keys(data);
+                    if (unitsToSync.length === 0) return;
+
+                    // 逐機構刪除舊資料並重新插入
+                    for (const unit of unitsToSync) {
+                        const encodedUnit = encodeURIComponent(unit);
+                        // 刪除該機構的所有舊名單（不限帳號，確保同機構資料統一）
+                        await fetch(`${supabaseUrl}/rest/v1/audit_personnel?unit=eq.${encodedUnit}`, {
+                            method: 'DELETE', headers
+                        });
+
+                        // 插入新資料，附上 user_id 作為寫入者記錄
+                        const rows = [];
+                        const cats = data[unit] || {};
                         Object.entries(cats).forEach(([cat, names]) => {
-                            names.forEach(name => {
-                                rows.push({ user_id: sess.user.id, unit, category: cat, name });
+                            (names || []).forEach(name => {
+                                if (name && name.trim()) {
+                                    rows.push({ user_id: sess.user.id, unit, category: cat, name: name.trim() });
+                                }
                             });
                         });
-                    });
-                    if (rows.length > 0) {
-                        await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
-                            method: 'POST', headers, body: JSON.stringify(rows)
-                        });
+                        if (rows.length > 0) {
+                            const res = await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
+                                method: 'POST', headers, body: JSON.stringify(rows)
+                            });
+                            if (!res.ok) {
+                                const errText = await res.text();
+                                console.error(`[${unit}] 人員同步失敗:`, res.status, errText);
+                            } else {
+                                console.log(`[${unit}] 人員名單已同步，共 ${rows.length} 筆。`);
+                            }
+                        }
                     }
-                    console.log(`人員名單已同步至雲端，共 ${rows.length} 筆。`);
                 } catch (err) {
                     console.error('人員名單雲端同步失敗:', err);
                 }
