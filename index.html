@@ -376,36 +376,25 @@
                 setError(null);
 
                 try {
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'apikey': serviceKey,
-                            'Authorization': `Bearer ${serviceKey}`
-                        }
+                    const localAdminClient = supabase.createClient(supabaseUrl, serviceKey, {
+                        auth: { autoRefreshToken: false, persistSession: false }
                     });
 
-                    if (!response.ok) {
-                        let errText = await response.text();
-                        let errMsg = "刪除失敗";
-                        try {
-                            const data = JSON.parse(errText);
-                            errMsg = data.msg || data.message || data.error || errMsg;
-                        } catch(e) {
-                            errMsg += ` (${response.status})`;
-                        }
+                    const { error } = await localAdminClient.auth.admin.deleteUser(userId);
+
+                    if (error) {
+                        let errMsg = typeof error.message === 'string' ? error.message : "刪除帳號失敗";
+                        let status = error.status || 500;
                         
-                        if (errMsg.toLowerCase().includes('foreign key') || errMsg.toLowerCase().includes('database error') || response.status === 500) {
+                        if (errMsg.toLowerCase().includes('foreign key') || errMsg.toLowerCase().includes('database error') || status === 500) {
                             if (window.confirm('此帳號仍有綁定的歷史資料，無法直接刪除。\n是否要「連同該帳號建立的所有資料一併刪除」？\n(警告：此動作無法復原)')) {
-                                await fetch(`${supabaseUrl}/rest/v1/audit_records?user_id=eq.${userId}`, {
-                                    method: 'DELETE', headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
-                                });
-                                await fetch(`${supabaseUrl}/rest/v1/audit_personnel?user_id=eq.${userId}`, {
-                                    method: 'DELETE', headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
-                                });
-                                const retryRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-                                    method: 'DELETE', headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
-                                });
-                                if (!retryRes.ok) throw new Error("重試刪除帳號失敗");
+                                // 刪除關聯資料
+                                await localAdminClient.from('audit_records').delete().eq('user_id', userId);
+                                await localAdminClient.from('audit_personnel').delete().eq('user_id', userId);
+                                
+                                // 再次嘗試刪除帳號
+                                const retry = await localAdminClient.auth.admin.deleteUser(userId);
+                                if (retry.error) throw new Error("重試刪除帳號失敗：" + (retry.error.message || "未知錯誤"));
                             } else {
                                 return;
                             }
@@ -416,7 +405,7 @@
                     
                     fetchUsers();
                 } catch (err) {
-                    setError('刪除失敗：' + err.message);
+                    setError('刪除失敗：' + (err.message || String(err)));
                 }
             };
 
