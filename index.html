@@ -494,7 +494,8 @@
                 try {
                     for (let u of users) {
                         const mappedUnit = EMAIL_TO_UNIT_MAP[u.email.toLowerCase()];
-                        if (mappedUnit && (!u.user_metadata || u.user_metadata.unit !== mappedUnit)) {
+                        // 只有當該帳號完全沒有設定機構時，才自動補齊
+                        if (mappedUnit && !u.user_metadata?.unit) {
                             await fetch(`${supabaseUrl}/auth/v1/admin/users/${u.id}`, {
                                 method: 'PUT',
                                 headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
@@ -1648,13 +1649,9 @@
                         }
                     }
 
-                    // 判斷權限
-                    const uUnit = sess?.user?.user_metadata?.unit || '';
-                    const isAdm = sess?.user?.email === 'sd@hok6.com.tw' || uUnit === '生福課';
-
                     // 3. 讀取人員名單（管理員看全部，一般帳號只看自己的）
                     let perUrl = `${supabaseUrl}/rest/v1/audit_personnel?select=*`;
-                    if (!isAdm) {
+                    if (!sessCanViewAll) {
                         perUrl += `&or=(user_id.eq.${sess.user.id},user_id.is.null)`;
                     }
                     const perRes = await fetch(perUrl, { headers });
