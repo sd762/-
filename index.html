@@ -2997,46 +2997,72 @@
                 }
 
                 if (allImported.length > 0) {
-                    setRecords(prev => [...allImported, ...prev]);
                     if (session) {
+                        showAlert('資料解析完成，正在將歷史紀錄同步至雲端...', '⏳ 同步中');
                         try {
                             const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
-                            fetch(`${supabaseUrl}/rest/v1/audit_records`, {
-                                method: 'POST',
-                                headers: {
-                                    'apikey': anonKey,
-                                    'Authorization': `Bearer ${session.access_token}`,
-                                    'Content-Type': 'application/json',
-                                    'Prefer': 'return=minimal'
-                                },
-                                body: JSON.stringify(allImported.map(r => ({
-                                    id: r.id,
-                                    audit_content: {
-                                        date: r.date,
-                                        auditName: r.auditName,
-                                        unitCategory: r.unitCategory || '',
-                                        unit: String(r.unit || '').trim(),
-                                        target: r.target || '',
-                                        jobTitle: r.jobTitle || '',
-                                        auditor: r.auditor || '',
-                                        score: r.score,
-                                        score2: r.score2 || null,
-                                        notes: r.notes || '',
-                                        isDual: !!r.isDual,
-                                        technique: r.technique || '',
-                                        checklist: r.checklist || [],
-                                        templateId: r.templateId || null
+                            
+                            // 分批上傳，避免 Payload 過大
+                            const batchSize = 100;
+                            for (let i = 0; i < allImported.length; i += batchSize) {
+                                const chunk = allImported.slice(i, i + batchSize);
+                                const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'apikey': anonKey,
+                                        'Authorization': `Bearer ${session.access_token}`,
+                                        'Content-Type': 'application/json',
+                                        'Prefer': 'return=minimal'
                                     },
-                                    user_id: session.user.id
-                                })))
-                            });
-                        } catch (e) { console.error("Failed", e); }
+                                    body: JSON.stringify(chunk.map(r => ({
+                                        // 不傳送 id 欄位，交由 Supabase 自動產生 bigint
+                                        audit_content: {
+                                            date: r.date,
+                                            auditName: r.auditName,
+                                            unitCategory: r.unitCategory || '',
+                                            unit: String(r.unit || '').trim(),
+                                            target: r.target || '',
+                                            jobTitle: r.jobTitle || '',
+                                            auditor: r.auditor || '',
+                                            score: r.score,
+                                            score2: r.score2 || null,
+                                            notes: r.notes || '',
+                                            isDual: !!r.isDual,
+                                            technique: r.technique || '',
+                                            checklist: r.checklist || [],
+                                            templateId: r.templateId || null
+                                        },
+                                        user_id: session.user.id
+                                    })))
+                                });
+                                
+                                if (!res.ok) {
+                                    const errText = await res.text();
+                                    throw new Error(`雲端寫入失敗 (${res.status}): ${errText}`);
+                                }
+                            }
+                            
+                            let msg = `✅ 成功匯入並上傳 ${allImported.length} 筆資料！即將重新整理...`;
+                            if (failFiles > 0) msg += `\n⚠️ 有 ${failFiles} 個檔案無法解析。`;
+                            showAlert(msg);
+                            setTimeout(() => window.location.reload(), 2000);
+                            
+                        } catch (e) {
+                            console.error("上傳歷史資料失敗", e);
+                            showAlert(`上傳雲端失敗：${e.message}`, '❌ 錯誤');
+                            setRecords(prev => [...allImported, ...prev]); // 失敗的話退回只寫入本地
+                        }
+                    } else {
+                        setRecords(prev => [...allImported, ...prev]);
+                        let msg = `✅ 成功匯入 ${allImported.length} 筆！(目前僅儲存於本地)`;
+                        if (failFiles > 0) msg += `\n⚠️ 有 ${failFiles} 個檔案無法解析。`;
+                        showAlert(msg);
                     }
+                } else if (failFiles > 0) {
+                    showAlert(`⚠️ 有 ${failFiles} 個檔案無法解析，無有效資料匯入。`);
+                } else {
+                    showAlert('所選檔案中沒有符合格式的資料。');
                 }
-
-                let msg = `✅ 成功匯入 ${allImported.length} 筆資料 (來自 ${successFiles} 個檔案)！`;
-                if (failFiles > 0) msg += `\n❌ 失敗 ${failFiles} 個檔案。`;
-                showAlert(msg);
 
                 e.target.value = '';
             };
