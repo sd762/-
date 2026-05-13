@@ -3611,6 +3611,8 @@
                                         <option value="date_asc">依日期排序 (舊到新)</option>
                                         <option value="name_asc">依姓名排序 (筆畫少到多)</option>
                                         <option value="name_desc">依姓名排序 (筆畫多到少)</option>
+                                        <option value="job_asc">依職務排序 (筆畫少到多)</option>
+                                        <option value="job_desc">依職務排序 (筆畫多到少)</option>
                                     </select>
                                     <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有月份</option>{uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}</select>
                                     <select value={filterItem} onChange={e => setFilterItem(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有稽核項目</option>{uniqueItems.map(i => <option key={i} value={i}>{i}</option>)}</select>
@@ -3683,6 +3685,8 @@
                                                                                     if (historySortBy === 'date_asc') return a.date.localeCompare(b.date);
                                                                                     if (historySortBy === 'name_asc') return (a.target || '').localeCompare(b.target || '', 'zh-TW');
                                                                                     if (historySortBy === 'name_desc') return (b.target || '').localeCompare(a.target || '', 'zh-TW');
+                                                                                    if (historySortBy === 'job_asc') return (a.jobTitle || '').localeCompare(b.jobTitle || '', 'zh-TW');
+                                                                                    if (historySortBy === 'job_desc') return (b.jobTitle || '').localeCompare(a.jobTitle || '', 'zh-TW');
                                                                                     return 0;
                                                                                 }).map(r => (
                                                                                     <tr key={r.id} className={`hover:bg-blue-50/40 transition-colors ${selectedIds.has(r.id) ? 'bg-blue-50/60' : ''}`}>
