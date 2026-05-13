@@ -3771,65 +3771,52 @@
                         {activeTab === 'manual' && (
                             <div className="animate-fade-in bg-white rounded-3xl border p-8 max-w-4xl mx-auto shadow-sm space-y-8 leading-relaxed">
                                 <div className="border-b pb-6 text-center">
-                                    <h2 className="text-3xl font-black text-primary flex items-center justify-center gap-3"><IconManual /> 系統操作手冊 <span className="bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full">版本：1.0版</span></h2>
-                                    <p className="text-slate-500 mt-2 text-sm">歡迎使用清福技術考稽核系統！這是一套專為減輕一線主管行政負擔所設計，具備強大打分、自動報表與數據搬家備份功能的系統。為確保系統操作順暢與資料安全，請詳閱以下說明。</p>
+                                    <h2 className="text-3xl font-black text-primary flex items-center justify-center gap-3"><IconManual /> 系統操作手冊 <span className="bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full">版本：2.0 雲端權限版</span></h2>
+                                    <p className="text-slate-500 mt-2 text-sm">歡迎使用清福技術考稽核系統！本系統已全面升級為「雲端多裝置同步」架構，具備機構權限隔離、自動報表生成與強大的資料管理功能。請詳閱以下說明以發揮系統最大效益。</p>
                                 </div>
 
                                 <section>
-                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-blue-50 inline-block px-4 py-2 rounded-lg border-l-4 border-blue-600 flex items-center gap-2"><IconForm /> 一、現場考評 (日常打分作業)</h3>
+                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-blue-50 inline-block px-4 py-2 rounded-lg border-l-4 border-blue-600 flex items-center gap-2"><IconForm /> 一、現場考評與名單管理</h3>
                                     <div className="space-y-4 text-slate-700">
-                                        <p><strong>1. 題庫選擇與管理：</strong>利用左上方的下拉選單選擇「主類別」與「子類別」來挑選具體評分表單。點選「垃圾桶」可刪除不要的自訂表單，點擊「匯入表單」上傳自建的 Word 或 Excel 檔即可自動解析匯入題庫。</p>
-                                        <p><strong>2. 快速打分機制：</strong></p>
+                                        <p><strong>1. 題庫選擇與管理：</strong>利用左上方的下拉選單選擇「主類別」與「子類別」來挑選具體評分表單。點選「垃圾桶」可刪除自訂表單，點擊「匯入表單」上傳 Excel 或 Word 檔即可自動解析。</p>
+                                        <p><strong>2. 人員名單共用與同步：</strong></p>
                                         <ul className="list-disc pl-8 space-y-1">
-                                            <li><span className="text-green-600 font-bold">符合：</span>該題拿滿分。</li>
-                                            <li><span className="text-amber-500 font-bold">部分：</span>自動給一半的分，且展開「自訂分數」欄位讓您微調。</li>
-                                            <li><span className="text-red-500 font-bold">不符：</span>該題 0 分。</li>
+                                            <li>點擊「受評者」旁的 <span className="text-blue-600 font-bold">管理名單</span> 按鈕，可依機構分類新增或刪除人員。</li>
+                                            <li>**機構內資料共享**：系統會根據您的登入帳號，自動載入您「所屬機構」的專屬名單。</li>
+                                            <li>若您在名單上做了修改，請點擊右上角的 <span className="text-emerald-600 font-bold">☁️ 立即同步</span>，更新後的名單將立刻同步至雲端，同機構的其他護理長重新整理網頁後即可共用此名單。</li>
                                         </ul>
-                                        <div className="bg-blue-50/50 p-4 rounded-lg border border-blue-100 mt-2 text-sm">
-                                            <p className="font-bold text-blue-800 flex items-center gap-1 mb-2"><IconForm /> 雙指標表單 (洗手遵從性及正確性) 特別說明：</p>
-                                            <ul className="list-disc pl-6 space-y-2">
-                                                <li><strong>獨立洗手時機：</strong>必須先點選對應的技術 (如: 抽痰、鼻胃管等)，系統會自動開展該技術標準的洗手時機。</li>
-                                                <li><strong>彈性新增時機：</strong>若技術選「其他」，您可以透過下方按鈕手動新增任意筆「時機一」至「時機五」，且可單獨刪除，完全符合現場實務狀況。</li>
-                                                <li><strong>飛梭填寫：</strong>若「遵從性(行動)」勾選了「沒洗手」，系統將自動鎖定正確性，避免邏輯矛盾。</li>
-                                            </ul>
-                                        </div>
+                                        <p><strong>3. 快速打分機制與雙指標：</strong>支援「符合(滿分)、部分(自訂分數)、不符(零分)」快速給分。針對「洗手考評」，支援獨立的洗手時機與雙指標（遵從性/正確性）自動連動邏輯。</p>
                                     </div>
                                 </section>
 
                                 <section>
-                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-emerald-50 inline-block px-4 py-2 rounded-lg border-l-4 border-emerald-600 flex items-center gap-2"><IconHistory /> 二、紀錄庫 (歷史資料與備份)</h3>
+                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-emerald-50 inline-block px-4 py-2 rounded-lg border-l-4 border-emerald-600 flex items-center gap-2"><IconHistory /> 二、紀錄庫 (歷史查詢與除錯)</h3>
                                     <div className="space-y-4 text-slate-700">
-                                        <p><strong>1. 階層分類檢索：</strong>所有歷史資料會自動依「月份 &gt; 稽核項目」歸檔，點擊列表列可展開收合，方便快速找查特定紀錄。</p>
-                                        <p><strong>2. 批次管理：</strong>可勾選「整個月份」、「單一項目」或「單筆資料」進行批次刪除，或單獨匯出成報表。</p>
-                                        <p><strong>3. 匯出報表與匯入 (搬家與備份)：</strong></p>
-                                        <ul className="list-disc pl-8 space-y-1">
-                                            <li>點擊上方「匯出所有資料 (備份)」，可將所有資料下載為 JSON 檔。</li>
-                                            <li><strong>智慧分析報表匯出：</strong>若勾選「洗手遵從性」紀錄匯出，系統會自動生成符合疾管署規範的洗手報表。</li>
-                                            <li>如需將資料搬移到另一台電腦，點擊「匯入資料 (搬家)」並上傳 JSON 檔，即可原機復原所有資料紀錄。</li>
-                                        </ul>
+                                        <p><strong>1. 階層分類檢索：</strong>歷史資料會自動依「機構 &gt; 月份 &gt; 稽核項目」歸檔，點擊列表列可展開收合，方便快速找查特定紀錄。</p>
+                                        <p><strong>2. 智慧排序功能 (2.0 新增)：</strong>若遇到同月份重複考核的問題，您可以使用上方的「下拉式排序選單」，將紀錄改為 <span className="text-emerald-600 font-bold">依姓名排序 (筆畫)</span> 或 <span className="text-emerald-600 font-bold">依職務排序</span>，能快速抓出重複打考績的紀錄並刪除。</p>
+                                        <p><strong>3. 批次管理與匯出：</strong>可勾選「整個月份」、「單一項目」或「單筆資料」進行批次刪除，或單獨匯出成報表。針對洗手考評，系統會自動生成符合疾管署規範的洗手報表格式。</p>
                                     </div>
                                 </section>
 
                                 <section>
                                     <h3 className="font-bold text-xl text-slate-800 mb-4 bg-purple-50 inline-block px-4 py-2 rounded-lg border-l-4 border-purple-600 flex items-center gap-2"><IconChart /> 三、分析報表 (評鑑與表單產出)</h3>
                                     <div className="space-y-4 text-slate-700">
-                                        <p><strong>1. 自動同步與跨機構篩選：</strong>系統會自動統計各月份成績。若資料散布在不同分館及機構，可於報表頁面頂部選擇特定機構或分館進行篩選。</p>
-                                        <p><strong>2. 彈性分析覆寫與邏輯：</strong></p>
-                                        <ul className="list-disc pl-8 space-y-1">
-                                            <li><strong>灰底提示：</strong>儲存格為「灰底區域」代表該月份為表定應受測月份。</li>
-                                            <li><strong>紙本成績覆寫：</strong>可點擊月份單元格，輸入紙本成績或覆寫系統成績（手動輸入成績將強制取代系統成績）。</li>
-                                            <li><strong>雙指標呈現：</strong>雙指標表單(如洗手考評)的系統成績會以「遵從率/正確率」兩項數據呈現。</li>
-                                        </ul>
-                                        <p><strong>3. 匯出分析總表：</strong>點選「匯出分析總表」，系統會將當前條件下的表格匯出為 Excel 報表，方便繳交評鑑資料。</p>
+                                        <p><strong>1. 自動統計與跨機構篩選：</strong>系統自動統計各月份成績。一般帳號僅能產出自己機構的報表；管理員帳號則可於頂部選擇特定機構或分館進行全局篩選。</p>
+                                        <p><strong>2. 彈性分析覆寫：</strong>點擊月份單元格，可手動輸入紙本成績或覆寫系統成績（手動輸入將強制取代系統原成績）。</p>
+                                        <p><strong>3. 匯出分析總表：</strong>點選「匯出分析總表」，系統會將當前條件下的表格匯出為 Excel 報表，直接用於繳交評鑑資料。</p>
                                     </div>
                                 </section>
 
                                 <section>
-                                    <h3 className="font-bold text-xl text-teal-800 mb-4 bg-teal-50 inline-block px-4 py-2 rounded-lg border border-teal-200">☁️ 四、雲端同步與資料安全指南 (1.0版更新)</h3>
+                                    <h3 className="font-bold text-xl text-slate-800 mb-4 bg-teal-50 inline-block px-4 py-2 rounded-lg border border-teal-200">☁️ 四、雲端架構與帳號權限說明</h3>
                                     <div className="bg-teal-50/50 p-5 rounded-xl border border-teal-100 text-sm text-teal-800 space-y-4 leading-relaxed">
-                                        <p><strong>1. 自動雲端同步：</strong><br />本系統已全面升級雲端資料庫。當您登入後，所有新增的考核紀錄與人員名單都會**即時同步至雲端**。您可以在不同的電腦或瀏覽器登入相同帳號，資料將無縫接軌，無需手動搬家。</p>
-                                        <p><strong>2. 離線暫存機制：</strong><br />若您在沒有網路的環境下使用，系統會先將資料安全地保存在您當前的瀏覽器中。請注意：**在尚未連上網路且未出現「同步完成」提示前，請勿清除瀏覽器暫存 (Cookie/Cache)**，否則離線資料將會遺失。</p>
-                                        <p><strong>3. 本機雙重備份 (建議作法)：</strong><br />雖然雲端已提供高安全性防護，但為符合嚴格的稽核標準，仍建議您定期（如每月一次）點擊右上角「匯出所有資料(備份)」按鈕下載 JSON 備份檔，以達到本地與雲端雙重備份的最佳實踐。</p>
+                                        <p><strong>1. 即時雲端同步：</strong>本系統資料庫架設於 Supabase 雲端。只要保持網路連線，您在「現場考評」新增的每一筆紀錄都會**自動且即時**備份至雲端。離線時資料會暫存於瀏覽器，待連線後自動上傳，請勿隨意清除瀏覽器快取 (Cache)。</p>
+                                        <p><strong>2. 機構權限隔離機制：</strong>系統實施嚴格的資料隔離機制。一般帳號登入後，只能看見且只能修改自己「機構」的紀錄與人員名單，無法越權讀取其他機構資料，確保資安無虞。</p>
+                                        <p><strong>3. 生福課與系統管理員專區：</strong></p>
+                                        <ul className="list-disc pl-6 space-y-1 mt-1">
+                                            <li>具備「生福課」或最高管理員權限的帳號，可以跨機構查閱所有分館的稽核紀錄與報表。</li>
+                                            <li>管理員擁有專屬的 **「系統後台」**，可執行全系統的資料強制同步（紀錄庫與題庫）、匯出全站 JSON 備份檔，以及進行帳號的「新增、刪除、Email 修改與機構綁定」。</li>
+                                        </ul>
                                     </div>
                                 </section>
                             </div>
