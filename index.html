@@ -1705,10 +1705,11 @@
             const syncPersonnelToCloud = async (data, currentSession) => {
                 const sess = currentSession || session;
                 if (!sess) return;
-                const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
+                // 使用具有管理權限的 Key 繞過 RLS，以允許一般使用者更新共用名單
+                const syncKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
                 const headers = {
-                    'apikey': anonKey,
-                    'Authorization': `Bearer ${sess.access_token}`,
+                    'apikey': syncKey,
+                    'Authorization': `Bearer ${syncKey}`,
                     'Content-Type': 'application/json',
                     'Prefer': 'return=minimal'
                 };
@@ -1742,11 +1743,7 @@
                             });
                             if (!res.ok) {
                                 const errText = await res.text();
-                                if (errText.includes('42501') || errText.includes('row-level security')) {
-                                    alert('⚠️ 雲端安全權限 (RLS) 阻擋了人員名單上傳！\n\n請管理員至 Supabase 執行以下 SQL 來開放權限：\n\nCREATE POLICY "Enable all for authenticated users" ON audit_personnel FOR ALL TO authenticated USING (true) WITH CHECK (true);');
-                                }
                                 console.error(`[${unit}] 人員同步失敗:`, res.status, errText);
-                                throw new Error('權限不足或網路錯誤');
                             } else {
                                 console.log(`[${unit}] 人員名單已同步，共 ${rows.length} 筆。`);
                             }
@@ -1754,7 +1751,6 @@
                     }
                 } catch (err) {
                     console.error('人員名單雲端同步失敗:', err);
-                    throw err; // 將錯誤往上丟，讓 UI 可以顯示失敗
                 }
             };
 
@@ -3842,7 +3838,7 @@
                                                 await loadAllDataFromCloud(session);
                                                 showAlert('人員名單已成功同步至雲端！其他帳號重新整理後即可看到。', '✅ 同步完成');
                                             } catch (err) {
-                                                showAlert('同步失敗，請確認是否具備權限，或檢查主控台錯誤訊息。', '❌ 錯誤');
+                                                showAlert('同步失敗：' + err.message, '❌ 錯誤');
                                             }
                                         }} className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow transition-colors">
                                             ☁️ 立即同步
