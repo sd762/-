@@ -1553,12 +1553,12 @@
 
             const [templates, setTemplates] = useState(() => {
                 const saved = Storage.getTemplates();
-                const isMigrated = localStorage.getItem('tpl_migrated_v22');
+                const isMigrated = localStorage.getItem('tpl_migrated_v23');
                 if (!isMigrated) {
                     // 強制將預設題庫更新到最新版，同時保留使用者自定義的題庫
                     const customSaved = saved.filter(s => !DEFAULT_TEMPLATES.some(d => d.id === s.id));
                     const merged = [...DEFAULT_TEMPLATES, ...customSaved];
-                    localStorage.setItem('tpl_migrated_v22', 'true');
+                    localStorage.setItem('tpl_migrated_v23', 'true');
                     Storage.saveTemplates(merged);
                     return merged;
                 }
@@ -1567,7 +1567,7 @@
 
             // 確保版本更新時自動觸發一次強制整理
             useEffect(() => {
-                const checkMigrated = localStorage.getItem('tpl_migrated_v22');
+                const checkMigrated = localStorage.getItem('tpl_migrated_v23');
                 if (!checkMigrated) {
                     setTemplates(prev => {
                         const customOnes = prev.filter(s => !DEFAULT_TEMPLATES.some(d => d.id === s.id));
@@ -1576,7 +1576,7 @@
                         // 如果有登入，我們稍後在 loadAllDataFromCloud 處理雲端同步
                         return merged;
                     });
-                    localStorage.setItem('tpl_migrated_v22', 'true');
+                    localStorage.setItem('tpl_migrated_v23', 'true');
                 }
             }, []);
 
