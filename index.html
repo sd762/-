@@ -1435,6 +1435,7 @@
             const [showPersonnelModal, setShowPersonnelModal] = useState(false);
             const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null, onCancel: null });
             const [filterMonth, setFilterMonth] = useState('');
+            const [historySortBy, setHistorySortBy] = useState('date_desc'); // 紀錄庫排序方式
             const [filterItem, setFilterItem] = useState('');
             const [filterUnitCategory, setFilterUnitCategory] = useState('');
             const [filterUnit, setFilterUnit] = useState('');
@@ -3605,6 +3606,12 @@
                                     </div>
                                 </div>
                                 <div className="p-4 flex flex-wrap gap-3 border-b bg-slate-50/30 items-center">
+                                    <select value={historySortBy} onChange={e => setHistorySortBy(e.target.value)} className="p-2 border rounded-lg text-xs font-bold text-primary outline-none bg-blue-50">
+                                        <option value="date_desc">依日期排序 (新到舊)</option>
+                                        <option value="date_asc">依日期排序 (舊到新)</option>
+                                        <option value="name_asc">依姓名排序 (筆畫少到多)</option>
+                                        <option value="name_desc">依姓名排序 (筆畫多到少)</option>
+                                    </select>
                                     <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有月份</option>{uniqueMonths.map(m => <option key={m} value={m}>{m}</option>)}</select>
                                     <select value={filterItem} onChange={e => setFilterItem(e.target.value)} className="p-2 border rounded-lg text-xs outline-none bg-white"><option value="">所有稽核項目</option>{uniqueItems.map(i => <option key={i} value={i}>{i}</option>)}</select>
 
@@ -3671,7 +3678,13 @@
                                                                                         {itEx ? <IconChevronDown /> : <IconChevronRight />} <IconFolder color="text-amber-500" /> {itemName} ({recs.length} 筆)
                                                                                     </td>
                                                                                 </tr>
-                                                                                {itEx && recs.map(r => (
+                                                                                {itEx && [...recs].sort((a, b) => {
+                                                                                    if (historySortBy === 'date_desc') return b.date.localeCompare(a.date);
+                                                                                    if (historySortBy === 'date_asc') return a.date.localeCompare(b.date);
+                                                                                    if (historySortBy === 'name_asc') return (a.target || '').localeCompare(b.target || '', 'zh-TW');
+                                                                                    if (historySortBy === 'name_desc') return (b.target || '').localeCompare(a.target || '', 'zh-TW');
+                                                                                    return 0;
+                                                                                }).map(r => (
                                                                                     <tr key={r.id} className={`hover:bg-blue-50/40 transition-colors ${selectedIds.has(r.id) ? 'bg-blue-50/60' : ''}`}>
                                                                                         <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => handleToggleSelect(r.id)} className="w-4 h-4 cursor-pointer" /></td>
                                                                                         <td className="p-3 text-slate-500 pl-24">{r.date}</td><td className="p-3 font-black text-primary">{r.target} {r.jobTitle && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded ml-1 font-normal">{r.jobTitle}</span>}</td><td className="p-3 text-slate-600 truncate max-w-[150px]">{r.auditName}</td>
