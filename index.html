@@ -2084,7 +2084,7 @@
                                 if (p[1]) { sum += Number(p[0]); sum2 += Number(p[1]); count++; }
                             }
                             else if (monthsCnt[m] > 0) {
-                                const c = Math.round(monthsC[m] / monthsCnt[m]), a = Math.round(monthsA[m] / monthsCnt[m]);
+                                const c = Math.round((monthsC[m] / monthsCnt[m]) * 10) / 10, a = Math.round((monthsA[m] / monthsCnt[m]) * 10) / 10;
                                 mAvgs[m] = { val: `${c}/${a}`, count: monthsCnt[m], manual: false };
                                 sum += c;
                                 sum2 += a;
@@ -2097,10 +2097,10 @@
                         for (let m = 1; m <= 12; m++) {
                             const key = `${selectedYear}_${tpl.id}_${m}`;
                             if (manualScores[key]) { const v = Number(manualScores[key]); mAvgs[m] = { val: v, count: 0, manual: true }; sum += v; count++; }
-                            else if (monthsCnt[m] > 0) { const v = Math.round(monthsS[m] / monthsCnt[m]); mAvgs[m] = { val: v, count: monthsCnt[m], manual: false }; sum += v; count++; }
+                            else if (monthsCnt[m] > 0) { const v = Math.round((monthsS[m] / monthsCnt[m]) * 10) / 10; mAvgs[m] = { val: v, count: monthsCnt[m], manual: false }; sum += v; count++; }
                         }
                     }
-                    const avgStr = count > 0 ? (tpl.isDual ? `${Math.round(sum / count)}/${Math.round(sum2 / count)}` : Math.round(sum / count)) : '-';
+                    const avgStr = count > 0 ? (tpl.isDual ? `${Math.round((sum / count) * 10) / 10}/${Math.round((sum2 / count) * 10) / 10}` : Math.round((sum / count) * 10) / 10) : '-';
                     const customThresholds = reportSettings.customThresholds || {};
                     const itemThreshold = customThresholds[tpl.id] !== undefined ? Number(customThresholds[tpl.id]) : (tpl.threshold || 90);
 
