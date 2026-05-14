@@ -2915,6 +2915,19 @@
                 if (formData.isDual && checklist.length === 0) return showAlert('至少需新增一個洗手時機！');
 
                 const finalAuditName = formData.isDual ? `${formData.auditName} (${formData.technique})` : formData.auditName;
+
+                // 重複檢查：同月份 + 同稽核項目 + 同受測者
+                const recMonth = formData.date?.substring(0, 7);
+                const dupRecord = records.find(r =>
+                    r.date?.substring(0, 7) === recMonth &&
+                    r.auditName === finalAuditName &&
+                    String(r.target).trim() === String(formData.target).trim()
+                );
+                if (dupRecord) return showAlert(
+                    `⚠️ ${recMonth.replace('-', ' 年 ')} 月已存在「${formData.target}」的「${finalAuditName}」考評紀錄。\n\n如需重新評核，請先至記錄庫將舊紀錄刪除後再儲存。`,
+                    '⛔ 重複紀錄'
+                );
+
                 const newRec = {
                     ...formData,
                     auditName: finalAuditName,
@@ -3133,12 +3146,24 @@
                     }
                 }
 
+                // 重複過濾：同月份 + 同稽核項目 + 同受測者 → 跳過
+                let skippedDupCount = 0;
+                allImported = allImported.filter(imp => {
+                    const isDup = records.some(r =>
+                        r.date?.substring(0, 7) === imp.date?.substring(0, 7) &&
+                        r.auditName === imp.auditName &&
+                        String(r.target).trim() === String(imp.target).trim()
+                    );
+                    if (isDup) { skippedDupCount++; return false; }
+                    return true;
+                });
+
                 if (allImported.length > 0) {
                     if (session) {
                         showAlert('資料解析完成，正在將歷史紀錄同步至雲端...', '⏳ 同步中');
                         try {
                             const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
-                            
+
                             // 分批上傳，避免 Payload 過大
                             const batchSize = 100;
                             for (let i = 0; i < allImported.length; i += batchSize) {
@@ -3180,6 +3205,7 @@
                             }
                             
                             let msg = `✅ 成功匯入並上傳 ${allImported.length} 筆資料！即將重新整理...`;
+                            if (skippedDupCount > 0) msg += `\n⚠️ 已略過 ${skippedDupCount} 筆重複紀錄（同月份、同項目、同受測者）。`;
                             if (failFiles > 0) msg += `\n⚠️ 有 ${failFiles} 個檔案無法解析。`;
                             showAlert(msg);
                             setTimeout(() => window.location.reload(), 2000);
@@ -3192,6 +3218,7 @@
                     } else {
                         setRecords(prev => [...allImported, ...prev]);
                         let msg = `✅ 成功匯入 ${allImported.length} 筆！(目前僅儲存於本地)`;
+                        if (skippedDupCount > 0) msg += `\n⚠️ 已略過 ${skippedDupCount} 筆重複紀錄（同月份、同項目、同受測者）。`;
                         if (failFiles > 0) msg += `\n⚠️ 有 ${failFiles} 個檔案無法解析。`;
                         showAlert(msg);
                     }
