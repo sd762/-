@@ -1616,6 +1616,7 @@
                 console.log('\u96f2\u7aef\u540c\u6b65\u767b\u5165:', sess.user?.email, '\u6a5f\u69cb:', sessUnit, '\u53ef\u770b\u5168\u90e8:', sessCanViewAll);
 
                 const cloudIds = new Set();
+                const cloudDedupKeys = new Set();
                 try {
                     // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
                     // 1. 讀取稽核紀錄 (後端不帶過濾條件，由前端處理，避免編碼不一致)
@@ -1625,7 +1626,12 @@
                         const recs = await recRes.json();
                         console.log('Records loaded:', recs.length);
                         setDebugInfo(`\u96f2\u7aef\u5171\u56de\u50b3 ${recs.length} \u7b46\u8cc7\u6599\uff0c\u60a8\u7684\u6a5f\u69cb\u70ba [${sessUnit}]`);
-                        recs.forEach(r => cloudIds.add(String(r.id)));
+                        recs.forEach(r => {
+                            cloudIds.add(String(r.id));
+                            const d = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
+                            const dk = `${(d.date || '').substring(0, 7)}__${d.auditName || ''}__${String(d.target || '').trim()}`;
+                            if (dk !== '__') cloudDedupKeys.add(dk);
+                        });
                         setRecords(recs.map(r => {
                             const data = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
                             return {
@@ -1708,7 +1714,7 @@
                     console.error('\u8f09\u5165\u96f2\u7aef\u8cc7\u6599\u5931\u6557:', err);
                     return null;
                 }
-                return cloudIds;
+                return { cloudIds, cloudDedupKeys };
             };
 
             // 將 personnelData 完整同步至 Supabase（以機構為單位：刪除該機構舊資料後重新插入）
@@ -1766,7 +1772,7 @@
 
             useEffect(() => {
                 if (session) {
-                    loadAllDataFromCloud(session).then(async (cloudIds) => {
+                    loadAllDataFromCloud(session).then(async ({ cloudIds, cloudDedupKeys }) => {
                         if (cloudIds === null) return;
                         const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
                         const headers = {
@@ -1779,7 +1785,11 @@
                         // ── 自動遷移 1：稽核紀錄 ──
                         const localRecs = Storage.getRecords();
                         if (localRecs && localRecs.length > 0) {
-                            const missing = localRecs.filter(r => !cloudIds.has(String(r.id)));
+                            const missing = localRecs.filter(r => {
+                            if (cloudIds.has(String(r.id))) return false;
+                            const dk = `${(r.date || '').substring(0, 7)}__${r.auditName || ''}__${String(r.target || '').trim()}`;
+                            return !cloudDedupKeys.has(dk);
+                        });
                             if (missing.length > 0) {
                                 console.log(`自動上傳 ${missing.length} 筆未同步紀錄...`);
                                 let uploaded = 0;
