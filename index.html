@@ -1629,7 +1629,7 @@
                         recs.forEach(r => {
                             cloudIds.add(String(r.id));
                             const d = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
-                            const dk = `${(d.date || '').substring(0, 7)}__${d.auditName || ''}__${String(d.target || '').trim()}`;
+                            const dk = `${String(d.unit || '').trim()}__${(d.date || '').substring(0, 7)}__${d.auditName || ''}__${String(d.target || '').trim()}`;
                             if (dk !== '__') cloudDedupKeys.add(dk);
                         });
                         setRecords(recs.map(r => {
@@ -1787,7 +1787,7 @@
                         if (localRecs && localRecs.length > 0) {
                             const missing = localRecs.filter(r => {
                             if (cloudIds.has(String(r.id))) return false;
-                            const dk = `${(r.date || '').substring(0, 7)}__${r.auditName || ''}__${String(r.target || '').trim()}`;
+                            const dk = `${String(r.unit || '').trim()}__${(r.date || '').substring(0, 7)}__${r.auditName || ''}__${String(r.target || '').trim()}`;
                             return !cloudDedupKeys.has(dk);
                         });
                             if (missing.length > 0) {
@@ -2323,7 +2323,7 @@
                     async () => {
                         const grouped = {};
                         records.forEach(r => {
-                            const key = `${r.date?.substring(0, 7)}__${r.auditName}__${String(r.target).trim()}`;
+                            const key = `${String(r.unit || '').trim()}__${r.date?.substring(0, 7)}__${r.auditName}__${String(r.target).trim()}`;
                             if (!grouped[key]) grouped[key] = [];
                             grouped[key].push(r);
                         });
@@ -2979,9 +2979,10 @@
 
                 const finalAuditName = formData.isDual ? `${formData.auditName} (${formData.technique})` : formData.auditName;
 
-                // 重複檢查：同月份 + 同稽核項目 + 同受測者
+                // 重複檢查：同機構 + 同月份 + 同稽核項目 + 同受測者
                 const recMonth = formData.date?.substring(0, 7);
                 const dupRecord = records.find(r =>
+                    String(r.unit || '').trim() === String(formData.unit || '').trim() &&
                     r.date?.substring(0, 7) === recMonth &&
                     r.auditName === finalAuditName &&
                     String(r.target).trim() === String(formData.target).trim()
@@ -3209,10 +3210,11 @@
                     }
                 }
 
-                // 重複過濾：同月份 + 同稽核項目 + 同受測者 → 跳過
+                // 重複過濾：同機構 + 同月份 + 同稽核項目 + 同受測者 → 跳過
                 let skippedDupCount = 0;
                 allImported = allImported.filter(imp => {
                     const isDup = records.some(r =>
+                        String(r.unit || '').trim() === String(imp.unit || '').trim() &&
                         r.date?.substring(0, 7) === imp.date?.substring(0, 7) &&
                         r.auditName === imp.auditName &&
                         String(r.target).trim() === String(imp.target).trim()
