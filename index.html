@@ -1772,8 +1772,9 @@
 
             useEffect(() => {
                 if (session) {
-                    loadAllDataFromCloud(session).then(async ({ cloudIds, cloudDedupKeys }) => {
-                        if (cloudIds === null) return;
+                    loadAllDataFromCloud(session).then(async (result) => {
+                        if (!result || !result.cloudIds) return;
+                        const { cloudIds, cloudDedupKeys } = result;
                         const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
                         const headers = {
                             'apikey': anonKey,
