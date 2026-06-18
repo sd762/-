@@ -1620,26 +1620,9 @@
                 try {
                     // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
                     // 1. 讀取稽核紀錄 (後端不帶過濾條件，由前端處理，避免編碼不一致)
-                    let allRecs = [];
-                    let fetchOffset = 0;
-                    const fetchPageSize = 1000;
-                    let fetchMore = true;
-                    while (fetchMore) {
-                        const batchRes = await fetch(
-                            `${supabaseUrl}/rest/v1/audit_records?select=*&order=created_at.desc&limit=${fetchPageSize}&offset=${fetchOffset}`,
-                            { headers }
-                        );
-                        if (!batchRes.ok) {
-                            const errText = await batchRes.text();
-                            console.error(`讀取紀錄失敗:`, batchRes.status, errText);
-                            break;
-                        }
-                        const batch = await batchRes.json();
-                        allRecs = allRecs.concat(batch);
-                        if (batch.length < fetchPageSize) fetchMore = false;
-                        else fetchOffset += fetchPageSize;
-                    }
-                    const recs = allRecs;
+                    const recSvcHdrs = { 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g', 'Content-Type': 'application/json' };
+                    const recRes = await fetch(supabaseUrl + '/rest/v1/audit_records?select=*&order=created_at.desc&limit=10000', { headers: recSvcHdrs });
+                    const recs = recRes.ok ? await recRes.json() : [];
                         console.log('Records loaded:', recs.length);
                         setDebugInfo(`\u96f2\u7aef\u5171\u56de\u50b3 ${recs.length} \u7b46\u8cc7\u6599\uff0c\u60a8\u7684\u6a5f\u69cb\u70ba [${sessUnit}]`);
                         recs.forEach(r => {
