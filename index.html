@@ -2222,18 +2222,26 @@
                 });
             }, [records, filterMonth, filterItem, filterUnitCategory, filterUnit]);
 
+            const parseAuditName = (name) => {
+                const match = String(name || '').match(/^(.*?)\s*[（(]\s*(.+?)\s*[)）]\s*$/);
+                if (match && match[1].trim()) return { base: match[1].trim(), sub: match[2].trim() };
+                return { base: String(name || '未命名'), sub: '' };
+            };
+
             const groupedRecords = useMemo(() => {
                 const groups = {};
                 flatFilteredRecords.forEach(r => {
                     const u = r.unit || '未指派單位';
                     const m = String(r.date).substring(0, 7) || '未知';
-                    const it = r.auditName;
+                    const { base, sub } = parseAuditName(r.auditName);
 
                     if (!groups[u]) groups[u] = { months: {}, totalCount: 0 };
                     if (!groups[u].months[m]) groups[u].months[m] = { items: {}, totalCount: 0 };
-                    if (!groups[u].months[m].items[it]) groups[u].months[m].items[it] = [];
+                    if (!groups[u].months[m].items[base]) groups[u].months[m].items[base] = { subs: {}, count: 0 };
+                    if (!groups[u].months[m].items[base].subs[sub]) groups[u].months[m].items[base].subs[sub] = [];
 
-                    groups[u].months[m].items[it].push(r);
+                    groups[u].months[m].items[base].subs[sub].push(r);
+                    groups[u].months[m].items[base].count++;
                     groups[u].months[m].totalCount++;
                     groups[u].totalCount++;
                 });
@@ -2257,6 +2265,31 @@
                     return next;
                 });
             };
+
+            const sortRecords = (recs) => [...recs].sort((a, b) => {
+                if (historySortBy === 'date_desc') return b.date.localeCompare(a.date);
+                if (historySortBy === 'date_asc') return a.date.localeCompare(b.date);
+                if (historySortBy === 'name_asc') return (a.target || '').localeCompare(b.target || '', 'zh-TW');
+                if (historySortBy === 'name_desc') return (b.target || '').localeCompare(a.target || '', 'zh-TW');
+                if (historySortBy === 'job_asc') return (a.jobTitle || '').localeCompare(b.jobTitle || '', 'zh-TW');
+                if (historySortBy === 'job_desc') return (b.jobTitle || '').localeCompare(a.jobTitle || '', 'zh-TW');
+                return 0;
+            });
+
+            const renderRecordRow = (r, padClass) => (
+                <tr key={r.id} className={`hover:bg-blue-50/40 transition-colors ${selectedIds.has(r.id) ? 'bg-blue-50/60' : ''}`}>
+                    <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => handleToggleSelect(r.id)} className="w-4 h-4 cursor-pointer" /></td>
+                    <td className={`p-3 text-slate-500 ${padClass || 'pl-24'}`}>{r.date}</td><td className="p-3 font-black text-primary">{r.target} {r.jobTitle && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded ml-1 font-normal">{r.jobTitle}</span>}</td><td className="p-3 text-slate-600 truncate max-w-[150px]">{r.auditName}</td>
+                    <td className="p-3 text-center">
+                        {r.isDual ? (
+                            <span className="inline-flex gap-1 text-[10px] font-black"><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">遵:{r.score}%</span><span className="bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded">正:{r.score2}%</span></span>
+                        ) : (
+                            <span className={`inline-block px-2 py-1 rounded-full font-black ${r.score < 80 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>{r.score}</span>
+                        )}
+                    </td>
+                    <td className="p-3 text-center"><button onClick={() => handleDeleteSingle(r.id)} className="text-red-300 hover:text-red-600 transition-colors"><IconTrash /></button></td>
+                </tr>
+            );
 
             const handleToggleSelect = (id) => {
                 const newIds = new Set(selectedIds);
@@ -3765,7 +3798,7 @@
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                             {Object.entries(groupedRecords).map(([unitName, unitData]) => {
-                                                const unitRecs = Object.values(unitData.months).flatMap(m => Object.values(m.items).flat());
+                                                const unitRecs = Object.values(unitData.months).flatMap(m => Object.values(m.items).flatMap(it => Object.values(it.subs).flat()));
                                                 const isUnitEx = expandedFolders.has(`unit_${unitName}`);
                                                 return (
                                                     <React.Fragment key={`unit_${unitName}`}>
@@ -3776,7 +3809,7 @@
                                                             </td>
                                                         </tr>
                                                         {isUnitEx && Object.entries(unitData.months).map(([month, mData]) => {
-                                                            const monthRecs = Object.values(mData.items).flat();
+                                                            const monthRecs = Object.values(mData.items).flatMap(it => Object.values(it.subs).flat());
                                                             const mKey = `unit_${unitName}_${month}`;
                                                             const isMonthEx = expandedFolders.has(mKey);
                                                             return (
@@ -3787,38 +3820,33 @@
                                                                             {isMonthEx ? <IconChevronDown /> : <IconChevronRight />} <IconFolder color="text-blue-600" /> {month} 月份紀錄 ({monthRecs.length} 筆)
                                                                         </td>
                                                                     </tr>
-                                                                    {isMonthEx && Object.entries(mData.items).map(([itemName, recs]) => {
-                                                                        const itKey = `${mKey}_${itemName}`;
+                                                                    {isMonthEx && Object.entries(mData.items).map(([baseName, itemData]) => {
+                                                                        const itKey = `${mKey}_${baseName}`;
                                                                         const itEx = expandedFolders.has(itKey);
+                                                                        const subKeys = Object.keys(itemData.subs);
+                                                                        const onlySelf = subKeys.length === 1 && subKeys[0] === '';
                                                                         return (
                                                                             <React.Fragment key={itKey}>
                                                                                 <tr className="bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer" onClick={() => toggleFolder(itKey)}>
                                                                                     <td colSpan="6" className="p-2 font-bold text-slate-600 flex items-center gap-2 pl-16">
-                                                                                        {itEx ? <IconChevronDown /> : <IconChevronRight />} <IconFolder color="text-amber-500" /> {itemName} ({recs.length} 筆)
+                                                                                        {itEx ? <IconChevronDown /> : <IconChevronRight />} <IconFolder color="text-amber-500" /> {baseName} ({itemData.count} 筆)
                                                                                     </td>
                                                                                 </tr>
-                                                                                {itEx && [...recs].sort((a, b) => {
-                                                                                    if (historySortBy === 'date_desc') return b.date.localeCompare(a.date);
-                                                                                    if (historySortBy === 'date_asc') return a.date.localeCompare(b.date);
-                                                                                    if (historySortBy === 'name_asc') return (a.target || '').localeCompare(b.target || '', 'zh-TW');
-                                                                                    if (historySortBy === 'name_desc') return (b.target || '').localeCompare(a.target || '', 'zh-TW');
-                                                                                    if (historySortBy === 'job_asc') return (a.jobTitle || '').localeCompare(b.jobTitle || '', 'zh-TW');
-                                                                                    if (historySortBy === 'job_desc') return (b.jobTitle || '').localeCompare(a.jobTitle || '', 'zh-TW');
-                                                                                    return 0;
-                                                                                }).map(r => (
-                                                                                    <tr key={r.id} className={`hover:bg-blue-50/40 transition-colors ${selectedIds.has(r.id) ? 'bg-blue-50/60' : ''}`}>
-                                                                                        <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => handleToggleSelect(r.id)} className="w-4 h-4 cursor-pointer" /></td>
-                                                                                        <td className="p-3 text-slate-500 pl-24">{r.date}</td><td className="p-3 font-black text-primary">{r.target} {r.jobTitle && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded ml-1 font-normal">{r.jobTitle}</span>}</td><td className="p-3 text-slate-600 truncate max-w-[150px]">{r.auditName}</td>
-                                                                                        <td className="p-3 text-center">
-                                                                                            {r.isDual ? (
-                                                                                                <span className="inline-flex gap-1 text-[10px] font-black"><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">遵:{r.score}%</span><span className="bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded">正:{r.score2}%</span></span>
-                                                                                            ) : (
-                                                                                                <span className={`inline-block px-2 py-1 rounded-full font-black ${r.score < 80 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>{r.score}</span>
-                                                                                            )}
-                                                                                        </td>
-                                                                                        <td className="p-3 text-center"><button onClick={() => handleDeleteSingle(r.id)} className="text-red-300 hover:text-red-600 transition-colors"><IconTrash /></button></td>
-                                                                                    </tr>
-                                                                                ))}
+                                                                                {itEx && onlySelf && sortRecords(itemData.subs['']).map(r => renderRecordRow(r, 'pl-24'))}
+                                                                                {itEx && !onlySelf && Object.entries(itemData.subs).map(([subName, subRecs]) => {
+                                                                                    const subKey = `${itKey}_${subName}`;
+                                                                                    const subEx = expandedFolders.has(subKey);
+                                                                                    return (
+                                                                                        <React.Fragment key={subKey}>
+                                                                                            <tr className="bg-amber-50/40 hover:bg-amber-100/60 transition-colors cursor-pointer" onClick={() => toggleFolder(subKey)}>
+                                                                                                <td colSpan="6" className="p-2 font-bold text-slate-600 flex items-center gap-2 pl-24">
+                                                                                                    {subEx ? <IconChevronDown /> : <IconChevronRight />} <IconFolder color="text-orange-400" /> {subName || '（未分類）'} ({subRecs.length} 筆)
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                            {subEx && sortRecords(subRecs).map(r => renderRecordRow(r, 'pl-32'))}
+                                                                                        </React.Fragment>
+                                                                                    );
+                                                                                })}
                                                                             </React.Fragment>
                                                                         );
                                                                     })}
