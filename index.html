@@ -338,6 +338,43 @@
                 setLoadingUsers(false);
             };
 
+            // 刪除紀錄查察
+            const [deletionLogs, setDeletionLogs] = useState([]);
+            const [loadingLogs, setLoadingLogs] = useState(false);
+            const [logsError, setLogsError] = useState(null);
+            const [expandedLogUnits, setExpandedLogUnits] = useState({});
+            const fetchDeletionLogs = async () => {
+                setLoadingLogs(true);
+                setLogsError(null);
+                try {
+                    const res = await fetch(`${supabaseUrl}/rest/v1/deletion_logs?select=*&order=deleted_at.desc&limit=5000`, {
+                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                    });
+                    if (!res.ok) {
+                        const t = await res.text();
+                        if (res.status === 404 || t.includes('deletion_logs')) {
+                            throw new Error('找不到 deletion_logs 資料表，請先在 Supabase 建立（見系統設定說明）。');
+                        }
+                        throw new Error(`讀取失敗 (${res.status})`);
+                    }
+                    setDeletionLogs(await res.json());
+                } catch (err) {
+                    setLogsError(err.message || '讀取刪除紀錄失敗');
+                }
+                setLoadingLogs(false);
+            };
+
+            // 依機構分組刪除紀錄
+            const logsByUnit = React.useMemo(() => {
+                const g = {};
+                deletionLogs.forEach(l => {
+                    const u = l.target_unit || '未指派單位';
+                    if (!g[u]) g[u] = [];
+                    g[u].push(l);
+                });
+                return Object.keys(g).sort((a, b) => a.localeCompare(b, 'zh-TW')).reduce((acc, k) => { acc[k] = g[k]; return acc; }, {});
+            }, [deletionLogs]);
+
             const handleCreateUser = async (e) => {
                 e.preventDefault();
                 setCreating(true);
@@ -380,6 +417,38 @@
                     const localAdminClient = supabase.createClient(supabaseUrl, serviceKey, {
                         auth: { autoRefreshToken: false, persistSession: false }
                     });
+
+                    // 刪除前先把該帳號的稽核紀錄寫入刪除軌跡，方便日後查核
+                    try {
+                        const delUser = users.find(u => u.id === userId);
+                        const delEmail = delUser?.email || userId;
+                        const recRes = await fetch(`${supabaseUrl}/rest/v1/audit_records?select=*&user_id=eq.${userId}`, {
+                            headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                        });
+                        if (recRes.ok) {
+                            const delRecs = await recRes.json();
+                            if (delRecs.length > 0) {
+                                const logRows = delRecs.map(r => {
+                                    const d = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
+                                    return {
+                                        operator_email: delEmail + '（刪除帳號）',
+                                        action_type: '刪除帳號',
+                                        target_unit: String(d.unit || '未指派單位').trim(),
+                                        record_date: d.date || '',
+                                        record_target: d.target || '',
+                                        record_audit_name: d.auditName || '',
+                                        record_score: String(d.score != null ? d.score : ''),
+                                        record_id: String(r.id)
+                                    };
+                                });
+                                await fetch(`${supabaseUrl}/rest/v1/deletion_logs`, {
+                                    method: 'POST',
+                                    headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                                    body: JSON.stringify(logRows)
+                                });
+                            }
+                        }
+                    } catch (logErr) { console.warn('刪除帳號軌跡寫入失敗', logErr); }
 
                     // 直接強制清空關聯資料，避免外鍵限制
                     const { error: err1 } = await localAdminClient.from('audit_records').delete().eq('user_id', userId);
@@ -776,6 +845,63 @@
                                             </tbody>
                                         </table>
                                     </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 animate-fade-in">
+                                <div className="flex flex-wrap justify-between items-center gap-3 mb-2">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">🗑️ 刪除紀錄查察（依機構分類）</h3>
+                                    <button onClick={fetchDeletionLogs} disabled={loadingLogs} className="text-xs bg-rose-100 hover:bg-rose-200 text-rose-700 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 shadow-sm disabled:opacity-50">
+                                        {loadingLogs ? '載入中...' : '🔄 載入 / 重新整理刪除紀錄'}
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">記錄所有「單筆刪除 / 批次刪除 / 清除重複 / 刪除帳號」動作，依機構分開顯示、不混在一起，方便逐一查核。</p>
+                                {logsError && <div className="bg-amber-50 text-amber-700 p-3 rounded-lg text-xs mb-4 font-bold">{logsError}</div>}
+                                {!logsError && deletionLogs.length === 0 && !loadingLogs && (
+                                    <div className="text-center text-slate-400 text-sm py-8">尚無刪除紀錄，或請按上方按鈕載入。</div>
+                                )}
+                                <div className="space-y-3">
+                                    {Object.entries(logsByUnit).map(([unit, logs]) => {
+                                        const open = !!expandedLogUnits[unit];
+                                        return (
+                                            <div key={unit} className="border border-slate-200 rounded-xl overflow-hidden">
+                                                <button onClick={() => setExpandedLogUnits(p => ({ ...p, [unit]: !p[unit] }))} className="w-full flex justify-between items-center px-4 py-3 bg-slate-100 hover:bg-slate-200 transition-colors text-left">
+                                                    <span className="font-bold text-slate-700 flex items-center gap-2">🏢 {unit} <span className="text-xs font-normal text-rose-600">（{logs.length} 筆刪除）</span></span>
+                                                    <span className="text-slate-400 text-xs">{open ? '▲ 收合' : '▼ 展開'}</span>
+                                                </button>
+                                                {open && (
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-left text-[11px]">
+                                                            <thead className="bg-slate-50 text-slate-500 font-bold">
+                                                                <tr>
+                                                                    <th className="p-2 whitespace-nowrap">刪除時間</th>
+                                                                    <th className="p-2">操作者</th>
+                                                                    <th className="p-2">動作</th>
+                                                                    <th className="p-2 whitespace-nowrap">考評日期</th>
+                                                                    <th className="p-2">受測者</th>
+                                                                    <th className="p-2">稽核項目</th>
+                                                                    <th className="p-2 text-center">分數</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {logs.map(l => (
+                                                                    <tr key={l.id} className="hover:bg-slate-50">
+                                                                        <td className="p-2 text-slate-500 whitespace-nowrap">{l.deleted_at ? new Date(l.deleted_at).toLocaleString() : ''}</td>
+                                                                        <td className="p-2 text-slate-600 whitespace-nowrap">{l.operator_email}</td>
+                                                                        <td className="p-2"><span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 font-bold whitespace-nowrap">{l.action_type}</span></td>
+                                                                        <td className="p-2 text-slate-500 whitespace-nowrap">{l.record_date}</td>
+                                                                        <td className="p-2 font-bold text-slate-700 whitespace-nowrap">{l.record_target}</td>
+                                                                        <td className="p-2 text-slate-600">{l.record_audit_name}</td>
+                                                                        <td className="p-2 text-center text-slate-600">{l.record_score}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
@@ -2323,13 +2449,38 @@
                 setSelectedIds(newIds);
             };
 
+            // 將刪除動作寫入稽核軌跡（deletion_logs），每刪一筆紀錄記一列，方便依機構查核
+            const logDeletion = async (recs, actionType) => {
+                if (!recs || recs.length === 0) return;
+                const logKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
+                const rows = recs.map(r => ({
+                    operator_email: session?.user?.email || '未登入',
+                    action_type: actionType,
+                    target_unit: String(r.unit || '未指派單位').trim(),
+                    record_date: r.date || '',
+                    record_target: r.target || '',
+                    record_audit_name: r.auditName || '',
+                    record_score: String(r.score != null ? r.score : ''),
+                    record_id: String(r.id)
+                }));
+                try {
+                    await fetch(`${supabaseUrl}/rest/v1/deletion_logs`, {
+                        method: 'POST',
+                        headers: { 'apikey': logKey, 'Authorization': 'Bearer ' + logKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                        body: JSON.stringify(rows)
+                    });
+                } catch (e) { console.error('刪除軌跡寫入失敗:', e); }
+            };
+
             const handleBatchDelete = async () => {
                 if (selectedIds.size === 0) return showAlert('請先勾選資料！');
                 showConfirm(`確定要刪除選取的 ${selectedIds.size} 筆資料？`, async () => {
                     const idsToDelete = Array.from(selectedIds);
+                    const recsToDelete = records.filter(r => selectedIds.has(r.id));
 
                     // 如果已登入，同步刪除雲端資料
                     if (session) {
+                        await logDeletion(recsToDelete, '批次刪除');
                         try {
                             const { error } = await supabaseClient.from('audit_records').delete().in('id', idsToDelete);
                             if (error) console.error("雲端刪除失敗:", error);
@@ -2346,6 +2497,8 @@
             const handleDeleteSingle = async (id) => {
                 showConfirm('確定要刪除這筆資料？', async () => {
                     if (session) {
+                        const rec = records.find(x => x.id === id);
+                        if (rec) await logDeletion([rec], '單筆刪除');
                         try {
                             const { error } = await supabaseClient.from('audit_records').delete().eq('id', id);
                             if (error) console.error("雲端刪除失敗:", error);
@@ -2381,9 +2534,11 @@
                             return;
                         }
 
+                        const recsToDelete = records.filter(r => toDelete.includes(r.id));
                         setRecords(prev => prev.filter(r => !toDelete.includes(r.id)));
 
                         if (session) {
+                            await logDeletion(recsToDelete, '清除重複');
                             try {
                                 const batchSize = 100;
                                 for (let i = 0; i < toDelete.length; i += batchSize) {
