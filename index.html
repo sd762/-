@@ -1748,12 +1748,14 @@
                     // 1. 讀取稽核紀錄 (後端不帶過濾條件，由前端處理，避免編碼不一致)
                     const recSvcKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
                     const recSvcHdrs = { 'apikey': recSvcKey, 'Authorization': 'Bearer ' + recSvcKey, 'Content-Type': 'application/json' };
+                    // 效能優化：一般機構帳號只抓「自己機構」的資料，載入量不受全系統總量影響；管理員/生福課維持抓全部。
+                    const recUnitFilter = (!sessCanViewAll && sessUnit) ? ('&audit_content->>unit=eq.' + encodeURIComponent(sessUnit)) : '';
                     // 分頁讀取：PostgREST 單次回傳有 max-rows 上限（約 1000 筆），必須用 offset 累加把所有資料抓回，否則超過上限的單位資料會「消失」。
                     let recs = [];
                     const recPageSize = 1000;
                     for (let recPage = 0; recPage < 100; recPage++) {
                         const recOffset = recPage * recPageSize;
-                        const recRes = await fetch(supabaseUrl + '/rest/v1/audit_records?select=*&order=created_at.desc&limit=' + recPageSize + '&offset=' + recOffset, { headers: recSvcHdrs });
+                        const recRes = await fetch(supabaseUrl + '/rest/v1/audit_records?select=*&order=created_at.desc&limit=' + recPageSize + '&offset=' + recOffset + recUnitFilter, { headers: recSvcHdrs });
                         if (!recRes.ok) { console.error('讀取紀錄分頁失敗:', recRes.status, await recRes.text()); break; }
                         const recBatch = await recRes.json();
                         recs = recs.concat(recBatch);
@@ -1919,6 +1921,8 @@
                         const localRecs = Storage.getRecords();
                         if (localRecs && localRecs.length > 0) {
                             const missing = localRecs.filter(r => {
+                            // 一般機構帳號只上傳自己機構的紀錄；雲端已改為只抓自己機構，若不擋會把 localStorage 殘留的他機構資料用錯誤 user_id 重新上傳。
+                            if (!canViewAll && userUnit && String(r.unit || '').trim() !== String(userUnit || '').trim()) return false;
                             if (cloudIds.has(String(r.id))) return false;
                             const dk = `${String(r.unit || '').trim()}__${(r.date || '').substring(0, 7)}__${r.auditName || ''}__${String(r.target || '').trim()}`;
                             return !cloudDedupKeys.has(dk);
