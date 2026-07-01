@@ -2802,20 +2802,28 @@
                     const GROUP_SIZE = 3;
                     const bandWidth = Math.min(GROUP_SIZE, handHygieneTargets.length) * 3;
                     const detailWsData = [];
-                    detailWsData.push([headerText]);
-                    detailWsData.push(['洗手遵從性及正確性稽核表']);
-                    detailWsData.push(['稽核員：（感控專責人員）']);
-                    const merges1 = [
-                        { s: { r: 0, c: 0 }, e: { r: 0, c: bandWidth - 1 } },
-                        { s: { r: 1, c: 0 }, e: { r: 1, c: bandWidth - 1 } },
-                        { s: { r: 2, c: 0 }, e: { r: 2, c: bandWidth - 1 } }
-                    ];
+                    const merges1 = [];
                     const tallRowIdx = [];
-                    // 每 3 人一組（帶狀區塊）：橫向並排 3 人（佔 9 欄），排滿就空一列往下開始新的一組，每組重複標題列，方便列印。
+                    const titleRowIdx = [];
+                    // 固定項次列數：預設 5（測驗項目最多 5 項），若有超過則取最大值，確保各組表格統一又不截斷資料。
+                    let globalMax = 0;
+                    handHygieneTargets.forEach(r => { if (r.checklist.length > globalMax) globalMax = r.checklist.length; });
+                    const FIXED_ROWS = Math.max(5, globalMax);
+                    // 每 3 人一組（帶狀區塊）：橫向並排 3 人（佔 9 欄），排滿就空一列往下開始新的一組。每組都重複「標題三列 + 覆核者列」，方便逐頁列印。
                     for (let g = 0; g < handHygieneTargets.length; g += GROUP_SIZE) {
                         const group = handHygieneTargets.slice(g, g + GROUP_SIZE);
                         if (g > 0) detailWsData.push([]); // 組間空一列分隔
                         const bandTop = detailWsData.length;
+                        // 標題三列（每組重複）
+                        detailWsData.push([headerText]);
+                        detailWsData.push(['洗手遵從性及正確性稽核表']);
+                        detailWsData.push(['稽核員：（感控專責人員）']);
+                        titleRowIdx.push(bandTop);
+                        merges1.push({ s: { r: bandTop, c: 0 }, e: { r: bandTop, c: bandWidth - 1 } });
+                        merges1.push({ s: { r: bandTop + 1, c: 0 }, e: { r: bandTop + 1, c: bandWidth - 1 } });
+                        merges1.push({ s: { r: bandTop + 2, c: 0 }, e: { r: bandTop + 2, c: bandWidth - 1 } });
+                        // 受稽人/稽核日/項目/表頭
+                        const headRow = detailWsData.length;
                         const r3 = [], r4 = [], r5 = [], r6 = [];
                         group.forEach((r, idx) => {
                             r3.push(idx === 0 ? '受稽人' : '受稽人員：', r.target, '');
@@ -2830,11 +2838,10 @@
                             r6.push('洗手機會', '洗手時機', '洗手行動/步驟');
                         });
                         detailWsData.push(r3, r4, r5, r6);
-                        tallRowIdx.push(bandTop + 3); // r6 標題列加高
-                        let gMax = 0;
-                        group.forEach(r => { if (r.checklist.length > gMax) gMax = r.checklist.length; });
+                        tallRowIdx.push(headRow + 3); // r6 表頭列加高
+                        // 固定 FIXED_ROWS 個項次列（不足補空列，讓各組高度統一）
                         const bandBodyStart = detailWsData.length;
-                        for (let i = 0; i < gMax; i++) {
+                        for (let i = 0; i < FIXED_ROWS; i++) {
                             const row = [];
                             group.forEach(r => {
                                 if (i < r.checklist.length) {
@@ -2850,17 +2857,22 @@
                                     let tName = item.name.replace('時機一：', '1').replace('時機二：', '2').replace('時機三：', '3').replace('時機四：', '4').replace('時機五：', '5');
                                     row.push(i + 1, tName, displayStr);
                                 } else {
-                                    row.push('', '', '');
+                                    row.push(i + 1, '', ''); // 補空列，仍顯示機會序號讓表格統一
                                 }
                             });
                             detailWsData.push(row);
                         }
                         for (let rr = bandBodyStart; rr < detailWsData.length; rr++) tallRowIdx.push(rr);
+                        // 覆核者列（每組底部）
+                        const reviewerRow = detailWsData.length;
+                        detailWsData.push(['覆核者:機構主任(業務負責人):']);
+                        merges1.push({ s: { r: reviewerRow, c: 0 }, e: { r: reviewerRow, c: bandWidth - 1 } });
+                        // 姓名/日期/項目 合併
                         group.forEach((r, idx) => {
                             const c = idx * 3;
-                            merges1.push({ s: { r: bandTop, c: c + 1 }, e: { r: bandTop, c: c + 2 } });         // 受稽人姓名
-                            merges1.push({ s: { r: bandTop + 1, c: c + 1 }, e: { r: bandTop + 1, c: c + 2 } }); // 稽核日
-                            merges1.push({ s: { r: bandTop + 2, c: c }, e: { r: bandTop + 2, c: c + 2 } });     // 項目
+                            merges1.push({ s: { r: headRow, c: c + 1 }, e: { r: headRow, c: c + 2 } });         // 受稽人姓名
+                            merges1.push({ s: { r: headRow + 1, c: c + 1 }, e: { r: headRow + 1, c: c + 2 } }); // 稽核日
+                            merges1.push({ s: { r: headRow + 2, c: c }, e: { r: headRow + 2, c: c + 2 } });     // 項目
                         });
                     }
 
@@ -2870,13 +2882,15 @@
                     detailWs['!rows'] = [];
                     tallRowIdx.forEach(rr => { detailWs['!rows'][rr] = { hpt: 100 }; });
                     detailWs['!merges'] = merges1;
-                    // 修正：標題也要保留邊框
-                    detailWs['A1'].s = { 
-                        alignment: { horizontal: "center", vertical: "center" }, 
-                        font: { bold: true, sz: 14 },
-                        border: { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
-                    };
-                    addReviewerRow(detailWs);
+                    // 每組標題列（第一列機構名）加粗放大並保留邊框
+                    titleRowIdx.forEach(tr => {
+                        const cell = window.XLSX.utils.encode_cell({ r: tr, c: 0 });
+                        if (detailWs[cell]) detailWs[cell].s = {
+                            alignment: { horizontal: "center", vertical: "center" },
+                            font: { bold: true, sz: 14 },
+                            border: { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+                        };
+                    });
                     window.XLSX.utils.book_append_sheet(wb, detailWs, "稽核明細");
 
                     // --- Format 2: 統計報表 (Statistical Summary) ---
