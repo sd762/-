@@ -1165,7 +1165,7 @@
                 ]
             },
             {
-                id: 'tpl-n-ng-insert', name: '鼻胃管置入評核總表', mainCategory: '照護品質類技術考', subCategory: '護理類', targetStaff: 'N(護理)', responsible: '品管組長', frequency: '2次/年', schedule: [1, 7], threshold: 95,
+                id: 'tpl-n-ng-insert', name: '鼻胃管置入評核總表', mainCategory: '照護品質類技術考', subCategory: '護理類', targetStaff: 'N(護理)', responsible: '品管組長', frequency: '1次/年', schedule: [7], threshold: 95,
                 items: [
                     { id: 'ni1', name: '洗手 (洗手時機一) 。', maxScore: 8, score: 8, note: '' },
                     { id: 'ni2', name: '向個案解釋。', maxScore: 10, score: 10, note: '' },
@@ -1443,7 +1443,10 @@
         ];
 
         // --- 報表表格組件 ---
-        const ReportTable = ({ title, data, onManualScoreChange, onHideItem, onRestoreItem, onAnalysisTextChange, onFrequencyChange, onThresholdChange, onClearAnalysis }) => (
+        const ReportTable = ({ title, data, onManualScoreChange, onHideItem, onRestoreItem, onAnalysisTextChange, onFrequencyChange, onThresholdChange, onClearAnalysis, onScheduleToggle }) => {
+            const [scheduleEditId, setScheduleEditId] = useState(null);
+            const scheduleEditRow = scheduleEditId ? data.visible.find(r => r.id === scheduleEditId) : null;
+            return (
             <div className="bg-white p-6 rounded-3xl border shadow-sm overflow-hidden mb-6">
                 <h3 className="font-bold text-slate-700 text-lg mb-4">{title}</h3>
                 <div className="overflow-x-auto custom-scrollbar pb-2">
@@ -1473,6 +1476,7 @@
                                     <td className="p-1 text-center">
                                         <input type="text" value={row.frequency} onChange={(e) => onFrequencyChange(row.id, e.target.value)}
                                             className="w-full text-center outline-none focus:bg-white focus:ring-1 focus:ring-primary rounded py-1.5 bg-transparent border border-transparent hover:border-slate-200 text-xs font-bold" />
+                                        <button onClick={() => setScheduleEditId(row.id)} title="設定表定監測月份（各年度分開）" className="mt-1 text-[9px] bg-slate-100 hover:bg-blue-100 text-slate-500 hover:text-blue-700 px-2 py-0.5 rounded-full transition-colors whitespace-nowrap">📅 表定月</button>
                                     </td>
                                     <td className="p-1 text-center">
                                         <input type="number" min="0" max="100" value={row.threshold} onChange={(e) => onThresholdChange(row.id, e.target.value)}
@@ -1529,8 +1533,34 @@
                         </div>
                     </div>
                 )}
+                {scheduleEditRow && (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setScheduleEditId(null)}>
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 border border-slate-100" onClick={e => e.stopPropagation()}>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-lg">📅 設定表定監測月份</h3>
+                                <p className="text-xs text-slate-500 mt-1">{scheduleEditRow.itemName}</p>
+                                <p className="text-[11px] text-blue-600 mt-1">點選月份切換是否為表定監測月（灰底）。此設定依「年度」分開儲存，僅影響目前選擇的年度。</p>
+                            </div>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
+                                    const on = (scheduleEditRow.schedule || []).includes(m);
+                                    return (
+                                        <button key={m} onClick={() => onScheduleToggle(scheduleEditRow.id, m, scheduleEditRow.schedule)}
+                                            className={`py-2 rounded-lg text-sm font-bold border transition-all ${on ? 'bg-slate-700 text-white border-slate-700 shadow' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>
+                                            {m}月
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex justify-end pt-2">
+                                <button onClick={() => setScheduleEditId(null)} className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm">完成</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-        );
+            );
+        };
 
         const normalizeDate = (val) => {
             if (!val) return '';
@@ -2342,7 +2372,7 @@
                         return text;
                     };
 
-                    return { id: tpl.id, itemName: tpl.name, targetStaff: tpl.targetStaff || '-', responsible: tpl.responsible || '-', frequency: customFreqs[tpl.id] || tpl.frequency, schedule: tpl.schedule || [], threshold: itemThreshold, isDual: !!tpl.isDual, mAvgs, avg: avgStr, analysisText: analysisTexts[`${selectedYear}_${tpl.id}`] || '', autoAnalysisText: generateAutoAnalysis(), isHidden: hiddenItems.includes(tpl.id) };
+                    return { id: tpl.id, itemName: tpl.name, targetStaff: tpl.targetStaff || '-', responsible: tpl.responsible || '-', frequency: customFreqs[tpl.id] || tpl.frequency, schedule: (reportSettings.customSchedules && reportSettings.customSchedules[`${selectedYear}_${tpl.id}`]) || tpl.schedule || [], threshold: itemThreshold, isDual: !!tpl.isDual, mAvgs, avg: avgStr, analysisText: analysisTexts[`${selectedYear}_${tpl.id}`] || '', autoAnalysisText: generateAutoAnalysis(), isHidden: hiddenItems.includes(tpl.id) };
                 });
                 return { visible: allItems.filter(i => !i.isHidden), hidden: allItems.filter(i => i.isHidden) };
             }, [records, selectedYear, templates, reportSettings, filterUnitCategory, filterUnit]);
@@ -2671,6 +2701,18 @@
                 });
             };
 
+            // 切換某年度某項目的表定監測月份（依「年度_項目」為 key 分開儲存）
+            const handleScheduleToggle = (tplId, month, currentSchedule) => {
+                setReportSettings(p => {
+                    const key = `${selectedYear}_${tplId}`;
+                    const existing = (p.customSchedules && p.customSchedules[key]) ? p.customSchedules[key] : (currentSchedule || []);
+                    const set = new Set(existing);
+                    if (set.has(month)) set.delete(month); else set.add(month);
+                    const arr = [...set].sort((a, b) => a - b);
+                    return { ...p, customSchedules: { ...(p.customSchedules || {}), [key]: arr } };
+                });
+            };
+
             const handleThresholdChange = (tplId, value) => {
                 setReportSettings(p => {
                     const n = { ...(p.customThresholds || {}) };
@@ -2757,71 +2799,76 @@
                     const headerText = `新北市私立${unitName}`;
 
                     // --- Format 1: 稽核明細表 (Detailed Checklist) ---
+                    const GROUP_SIZE = 3;
+                    const bandWidth = Math.min(GROUP_SIZE, handHygieneTargets.length) * 3;
                     const detailWsData = [];
                     detailWsData.push([headerText]);
                     detailWsData.push(['洗手遵從性及正確性稽核表']);
                     detailWsData.push(['稽核員：（感控專責人員）']);
-                    const r3 = [], r4 = [], r5 = [], r6 = [];
-                    handHygieneTargets.forEach((r, idx) => {
-                        r3.push(idx === 0 ? '受稽人' : '受稽人員：', r.target, '');
-                        let twDate = r.date;
-                        if (twDate && twDate.includes('-')) {
-                            const [y, m, d] = twDate.split('-');
-                            twDate = `${parseInt(y) - 1911}.${m}.${d}`;
-                        }
-                        r4.push(idx === 0 ? '稽核日' : '', twDate, '');
-                        let technique = r.auditName.split('(')[1]?.replace(')', '') || '(其他)';
-                        r5.push(`項目：${technique}`, '', '');
-                        r6.push('洗手機會', '洗手時機', '洗手行動/步驟');
-                    });
-                    detailWsData.push(r3, r4, r5, r6);
-
-                    let maxLen = 0;
-                    handHygieneTargets.forEach(r => { if (r.checklist.length > maxLen) maxLen = r.checklist.length; });
-
-                    for (let i = 0; i < maxLen; i++) {
-                        const row = [];
-                        handHygieneTargets.forEach(r => {
-                            if (i < r.checklist.length) {
-                                const item = r.checklist[i];
-                                let actionStr = '沒有洗手';
-                                if (item.comp === 'dry') actionStr = '乾洗手';
-                                else if (item.comp === 'wet') actionStr = '濕洗手';
-
-                                let stepStr = '';
-                                if (item.acc === 'yes') stepStr = '確實';
-                                else if (item.acc === 'no') stepStr = '未確實';
-
-                                let displayStr = `洗手行動\n${actionStr}`;
-                                if (stepStr) displayStr += `\n洗手步驟\n${stepStr}`;
-
-                                let tName = item.name.replace('時機一：', '1').replace('時機二：', '2').replace('時機三：', '3').replace('時機四：', '4').replace('時機五：', '5');
-                                row.push(i + 1, tName, displayStr);
-                            } else {
-                                row.push('', '', '');
+                    const merges1 = [
+                        { s: { r: 0, c: 0 }, e: { r: 0, c: bandWidth - 1 } },
+                        { s: { r: 1, c: 0 }, e: { r: 1, c: bandWidth - 1 } },
+                        { s: { r: 2, c: 0 }, e: { r: 2, c: bandWidth - 1 } }
+                    ];
+                    const tallRowIdx = [];
+                    // 每 3 人一組（帶狀區塊）：橫向並排 3 人（佔 9 欄），排滿就空一列往下開始新的一組，每組重複標題列，方便列印。
+                    for (let g = 0; g < handHygieneTargets.length; g += GROUP_SIZE) {
+                        const group = handHygieneTargets.slice(g, g + GROUP_SIZE);
+                        if (g > 0) detailWsData.push([]); // 組間空一列分隔
+                        const bandTop = detailWsData.length;
+                        const r3 = [], r4 = [], r5 = [], r6 = [];
+                        group.forEach((r, idx) => {
+                            r3.push(idx === 0 ? '受稽人' : '受稽人員：', r.target, '');
+                            let twDate = r.date;
+                            if (twDate && twDate.includes('-')) {
+                                const [y, m, d] = twDate.split('-');
+                                twDate = `${parseInt(y) - 1911}.${m}.${d}`;
                             }
+                            r4.push(idx === 0 ? '稽核日' : '', twDate, '');
+                            let technique = r.auditName.split('(')[1]?.replace(')', '') || '(其他)';
+                            r5.push(`項目：${technique}`, '', '');
+                            r6.push('洗手機會', '洗手時機', '洗手行動/步驟');
                         });
-                        detailWsData.push(row);
+                        detailWsData.push(r3, r4, r5, r6);
+                        tallRowIdx.push(bandTop + 3); // r6 標題列加高
+                        let gMax = 0;
+                        group.forEach(r => { if (r.checklist.length > gMax) gMax = r.checklist.length; });
+                        const bandBodyStart = detailWsData.length;
+                        for (let i = 0; i < gMax; i++) {
+                            const row = [];
+                            group.forEach(r => {
+                                if (i < r.checklist.length) {
+                                    const item = r.checklist[i];
+                                    let actionStr = '沒有洗手';
+                                    if (item.comp === 'dry') actionStr = '乾洗手';
+                                    else if (item.comp === 'wet') actionStr = '濕洗手';
+                                    let stepStr = '';
+                                    if (item.acc === 'yes') stepStr = '確實';
+                                    else if (item.acc === 'no') stepStr = '未確實';
+                                    let displayStr = `洗手行動\n${actionStr}`;
+                                    if (stepStr) displayStr += `\n洗手步驟\n${stepStr}`;
+                                    let tName = item.name.replace('時機一：', '1').replace('時機二：', '2').replace('時機三：', '3').replace('時機四：', '4').replace('時機五：', '5');
+                                    row.push(i + 1, tName, displayStr);
+                                } else {
+                                    row.push('', '', '');
+                                }
+                            });
+                            detailWsData.push(row);
+                        }
+                        for (let rr = bandBodyStart; rr < detailWsData.length; rr++) tallRowIdx.push(rr);
+                        group.forEach((r, idx) => {
+                            const c = idx * 3;
+                            merges1.push({ s: { r: bandTop, c: c + 1 }, e: { r: bandTop, c: c + 2 } });         // 受稽人姓名
+                            merges1.push({ s: { r: bandTop + 1, c: c + 1 }, e: { r: bandTop + 1, c: c + 2 } }); // 稽核日
+                            merges1.push({ s: { r: bandTop + 2, c: c }, e: { r: bandTop + 2, c: c + 2 } });     // 項目
+                        });
                     }
 
                     const detailWs = window.XLSX.utils.aoa_to_sheet(detailWsData);
                     applyGlobalStyle(detailWs);
-                    detailWs['!cols'] = Array(handHygieneTargets.length * 3).fill({ wch: 9 });
+                    detailWs['!cols'] = Array(bandWidth).fill({ wch: 9 });
                     detailWs['!rows'] = [];
-                    for (let rIdx = 6; rIdx < detailWsData.length; rIdx++) {
-                        detailWs['!rows'][rIdx] = { hpt: 100 };
-                    }
-                    const merges1 = [
-                        { s: { r: 0, c: 0 }, e: { r: 0, c: handHygieneTargets.length * 3 - 1 } },
-                        { s: { r: 1, c: 0 }, e: { r: 1, c: handHygieneTargets.length * 3 - 1 } },
-                        { s: { r: 2, c: 0 }, e: { r: 2, c: handHygieneTargets.length * 3 - 1 } }
-                    ];
-                    handHygieneTargets.forEach((r, idx) => {
-                        const c = idx * 3;
-                        merges1.push({ s: { r: 3, c: c + 1 }, e: { r: 3, c: c + 2 } }); // target name
-                        merges1.push({ s: { r: 4, c: c + 1 }, e: { r: 4, c: c + 2 } }); // date
-                        merges1.push({ s: { r: 5, c: c }, e: { r: 5, c: c + 2 } });   // item
-                    });
+                    tallRowIdx.forEach(rr => { detailWs['!rows'][rr] = { hpt: 100 }; });
                     detailWs['!merges'] = merges1;
                     // 修正：標題也要保留邊框
                     detailWs['A1'].s = { 
@@ -4081,8 +4128,8 @@
                                         <button onClick={handleExportChartExcel} className="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-sm hover:bg-green-700 transition-colors"><IconDownload /> 匯出分析總表</button>
                                     </div>
                                 </div>
-                                <ReportTable title="📈 照護品質監測年度管理總表" data={careReportData} onManualScoreChange={handleManualScoreChange} onHideItem={handleHideItem} onRestoreItem={handleRestoreItem} onAnalysisTextChange={handleAnalysisTextChange} onFrequencyChange={handleFrequencyChange} onThresholdChange={handleThresholdChange} onClearAnalysis={handleClearAnalysis} />
-                                <ReportTable title="🔧 儀器操作監測年度管理總表" data={equipReportData} onManualScoreChange={handleManualScoreChange} onHideItem={handleHideItem} onRestoreItem={handleRestoreItem} onAnalysisTextChange={handleAnalysisTextChange} onFrequencyChange={handleFrequencyChange} onThresholdChange={handleThresholdChange} onClearAnalysis={handleClearAnalysis} />
+                                <ReportTable title="📈 照護品質監測年度管理總表" data={careReportData} onManualScoreChange={handleManualScoreChange} onHideItem={handleHideItem} onRestoreItem={handleRestoreItem} onAnalysisTextChange={handleAnalysisTextChange} onFrequencyChange={handleFrequencyChange} onThresholdChange={handleThresholdChange} onClearAnalysis={handleClearAnalysis} onScheduleToggle={handleScheduleToggle} />
+                                <ReportTable title="🔧 儀器操作監測年度管理總表" data={equipReportData} onManualScoreChange={handleManualScoreChange} onHideItem={handleHideItem} onRestoreItem={handleRestoreItem} onAnalysisTextChange={handleAnalysisTextChange} onFrequencyChange={handleFrequencyChange} onThresholdChange={handleThresholdChange} onClearAnalysis={handleClearAnalysis} onScheduleToggle={handleScheduleToggle} />
                             </div>
                         )}
 
