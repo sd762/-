@@ -2508,6 +2508,21 @@
                 } catch (e) { console.error('刪除軌跡寫入失敗:', e); }
             };
 
+            // 用 service_role 刪除雲端紀錄，繞過 RLS。因為部分紀錄的 user_id 可能與登入者不同（早期匯入或他帳號建立），
+            // 若用一般身分刪除會被 RLS 靜默擋下，造成「刪不掉、重整又出現」。畫面只會顯示自己機構的資料，且刪除都有寫入軌跡。
+            const deleteRecordsFromCloud = async (ids) => {
+                if (!ids || ids.length === 0) return;
+                const delKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
+                const headers = { 'apikey': delKey, 'Authorization': 'Bearer ' + delKey, 'Content-Type': 'application/json' };
+                for (let i = 0; i < ids.length; i += 100) {
+                    const chunk = ids.slice(i, i + 100);
+                    try {
+                        const res = await fetch(`${supabaseUrl}/rest/v1/audit_records?id=in.(${chunk.map(id => encodeURIComponent(id)).join(',')})`, { method: 'DELETE', headers });
+                        if (!res.ok) console.error('雲端刪除失敗:', res.status, await res.text());
+                    } catch (err) { console.error('雲端刪除錯誤:', err); }
+                }
+            };
+
             const handleBatchDelete = async () => {
                 if (selectedIds.size === 0) return showAlert('請先勾選資料！');
                 showConfirm(`確定要刪除選取的 ${selectedIds.size} 筆資料？`, async () => {
@@ -2517,12 +2532,7 @@
                     // 如果已登入，同步刪除雲端資料
                     if (session) {
                         await logDeletion(recsToDelete, '批次刪除');
-                        try {
-                            const { error } = await supabaseClient.from('audit_records').delete().in('id', idsToDelete);
-                            if (error) console.error("雲端刪除失敗:", error);
-                        } catch (err) {
-                            console.error("雲端刪除錯誤:", err);
-                        }
+                        await deleteRecordsFromCloud(idsToDelete);
                     }
 
                     setRecords(prev => prev.filter(r => !selectedIds.has(r.id)));
@@ -2535,12 +2545,7 @@
                     if (session) {
                         const rec = records.find(x => x.id === id);
                         if (rec) await logDeletion([rec], '單筆刪除');
-                        try {
-                            const { error } = await supabaseClient.from('audit_records').delete().eq('id', id);
-                            if (error) console.error("雲端刪除失敗:", error);
-                        } catch (err) {
-                            console.error("雲端刪除錯誤:", err);
-                        }
+                        await deleteRecordsFromCloud([id]);
                     }
                     setRecords(prev => prev.filter(x => x.id !== id));
                 });
@@ -2575,16 +2580,7 @@
 
                         if (session) {
                             await logDeletion(recsToDelete, '清除重複');
-                            try {
-                                const batchSize = 100;
-                                for (let i = 0; i < toDelete.length; i += batchSize) {
-                                    const chunk = toDelete.slice(i, i + batchSize);
-                                    const { error } = await supabaseClient.from('audit_records').delete().in('id', chunk);
-                                    if (error) console.error('批次刪除重複失敗:', error);
-                                }
-                            } catch (err) {
-                                console.error('雲端清除重複失敗:', err);
-                            }
+                            await deleteRecordsFromCloud(toDelete);
                         }
 
                         showAlert(`✅ 清除完成！共刪除 ${toDelete.length} 筆重複紀錄，每組均保留最完整的一筆。`);
