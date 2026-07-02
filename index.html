@@ -1461,15 +1461,17 @@
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => <th key={m} className="p-3 text-center w-12">{m}月</th>)}
                                 <th className="p-3 text-center bg-blue-100/50 w-16">年平均</th>
                                 <th className="p-3 text-left w-64">檢討改善分析</th>
-                                <th className="p-3 text-center w-10">操作</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {data.visible.map((row) => (
                                 <tr key={row.id} className="hover:bg-slate-50 transition-colors group">
-                                    <td className="p-3 font-bold text-slate-700 truncate sticky left-0 bg-white group-hover:bg-slate-50 z-10" title={row.itemName}>
-                                        {row.itemName}
-                                        {row.isDual && <span className="block text-[9px] text-blue-500 font-normal">遵從率/正確率</span>}
+                                    <td className="p-3 font-bold text-slate-700 sticky left-0 bg-white group-hover:bg-slate-50 z-10" title={row.itemName}>
+                                        <div className="flex items-center gap-1.5">
+                                            <button onClick={() => onHideItem(row.id)} title="關閉此列顯示" className="text-slate-300 hover:text-red-500 transition-colors shrink-0"><IconEyeOff /></button>
+                                            <span className="truncate">{row.itemName}</span>
+                                        </div>
+                                        {row.isDual && <span className="block text-[9px] text-blue-500 font-normal pl-6">遵從率/正確率</span>}
                                     </td>
                                     <td className="p-2 text-center text-slate-500">{row.targetStaff}</td>
                                     <td className="p-2 text-center text-slate-500">{row.responsible}</td>
@@ -1512,9 +1514,6 @@
                                                 <span className="absolute top-0.5 right-0.5 text-[8px] bg-blue-100 text-blue-500 px-1 rounded pointer-events-none opacity-60">自動</span>
                                             )}
                                         </div>
-                                    </td>
-                                    <td className="p-2 text-center">
-                                        <button onClick={() => onHideItem(row.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><IconEyeOff /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -2247,7 +2246,8 @@
                 const analysisTexts = reportSettings.analysisTexts || {};
                 const customFreqs = reportSettings.customFrequencies || {};
                 // 手動填入分數的儲存範圍：依「機構(或機構類別)」分開，切換單位時不會互相殘留。
-                const reportScope = filterUnit || filterUnitCategory || 'ALL';
+                // 一般機構帳號固定鎖定在自己機構(userUnit)；管理員/生福課依報表篩選的單位或類別。
+                const reportScope = canViewAll ? (filterUnit || filterUnitCategory || 'ALL') : (userUnit || filterUnit || filterUnitCategory || 'ALL');
 
                 const allItems = templates.filter(t => t.mainCategory === categoryName).map(tpl => {
                     const yearRecords = records.filter(r => {
@@ -2687,7 +2687,7 @@
             };
 
             const handleManualScoreChange = (tplId, month, value, isDual) => {
-                const reportScope = filterUnit || filterUnitCategory || 'ALL';
+                const reportScope = canViewAll ? (filterUnit || filterUnitCategory || 'ALL') : (userUnit || filterUnit || filterUnitCategory || 'ALL');
                 const key = `${selectedYear}_${reportScope}_${tplId}_${month}`;
                 setReportSettings(p => {
                     const n = { ...(p.manualScores || {}) };
