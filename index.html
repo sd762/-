@@ -2246,6 +2246,8 @@
                 const manualScores = reportSettings.manualScores || {};
                 const analysisTexts = reportSettings.analysisTexts || {};
                 const customFreqs = reportSettings.customFrequencies || {};
+                // 手動填入分數的儲存範圍：依「機構(或機構類別)」分開，切換單位時不會互相殘留。
+                const reportScope = filterUnit || filterUnitCategory || 'ALL';
 
                 const allItems = templates.filter(t => t.mainCategory === categoryName).map(tpl => {
                     const yearRecords = records.filter(r => {
@@ -2263,7 +2265,7 @@
                             if (m) { monthsC[m] += Number(r.score || 0); monthsA[m] += Number(r.score2 || 0); monthsCnt[m]++; }
                         });
                         for (let m = 1; m <= 12; m++) {
-                            const key = `${selectedYear}_${tpl.id}_${m}`;
+                            const key = `${selectedYear}_${reportScope}_${tpl.id}_${m}`;
                             if (manualScores[key]) {
                                 mAvgs[m] = { val: manualScores[key], count: 0, manual: true };
                                 const p = manualScores[key].split('/');
@@ -2281,7 +2283,7 @@
                         const monthsS = Array(13).fill(0), monthsCnt = Array(13).fill(0);
                         yearRecords.forEach(r => { const m = parseInt(r.date.split('-')[1]); if (m) { monthsS[m] += Number(r.score); monthsCnt[m]++; } });
                         for (let m = 1; m <= 12; m++) {
-                            const key = `${selectedYear}_${tpl.id}_${m}`;
+                            const key = `${selectedYear}_${reportScope}_${tpl.id}_${m}`;
                             if (manualScores[key]) { const v = Number(manualScores[key]); mAvgs[m] = { val: v, count: 0, manual: true }; sum += v; count++; }
                             else if (monthsCnt[m] > 0) { const v = Math.round((monthsS[m] / monthsCnt[m]) * 10) / 10; mAvgs[m] = { val: v, count: monthsCnt[m], manual: false }; sum += v; count++; }
                         }
@@ -2685,7 +2687,8 @@
             };
 
             const handleManualScoreChange = (tplId, month, value, isDual) => {
-                const key = `${selectedYear}_${tplId}_${month}`;
+                const reportScope = filterUnit || filterUnitCategory || 'ALL';
+                const key = `${selectedYear}_${reportScope}_${tplId}_${month}`;
                 setReportSettings(p => {
                     const n = { ...(p.manualScores || {}) };
                     if (value === '') delete n[key]; else n[key] = value;
