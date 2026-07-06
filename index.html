@@ -375,6 +375,68 @@
                 return Object.keys(g).sort((a, b) => a.localeCompare(b, 'zh-TW')).reduce((acc, k) => { acc[k] = g[k]; return acc; }, {});
             }, [deletionLogs]);
 
+            // 評核項目統一設定（frequency/schedule/threshold/targetStaff/responsible），存 template_overrides，改了對所有機構一致生效
+            const [tplRows, setTplRows] = useState([]);
+            const [tplLoaded, setTplLoaded] = useState(false);
+            const [loadingTpl, setLoadingTpl] = useState(false);
+            const [tplMsg, setTplMsg] = useState('');
+            const [tplScheduleEditId, setTplScheduleEditId] = useState(null);
+            const loadTplSettings = async () => {
+                setLoadingTpl(true); setTplMsg('');
+                try {
+                    const res = await fetch(`${supabaseUrl}/rest/v1/template_overrides?select=*`, {
+                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                    });
+                    const ovMap = {};
+                    if (res.ok) { (await res.json()).forEach(o => { ovMap[o.tpl_id] = o; }); }
+                    else if (res.status === 404 || (await res.clone().text()).includes('template_overrides')) {
+                        setTplMsg('找不到 template_overrides 資料表，請先在 Supabase 建立（見下方說明）。');
+                    }
+                    const rows = DEFAULT_TEMPLATES.map(t => {
+                        const ov = ovMap[t.id] || {};
+                        return {
+                            id: t.id, name: t.name, mainCategory: t.mainCategory,
+                            frequency: (ov.frequency != null && ov.frequency !== '') ? ov.frequency : (t.frequency || ''),
+                            threshold: (ov.threshold != null) ? ov.threshold : (t.threshold != null ? t.threshold : ''),
+                            targetStaff: (ov.target_staff != null && ov.target_staff !== '') ? ov.target_staff : (t.targetStaff || ''),
+                            responsible: (ov.responsible != null && ov.responsible !== '') ? ov.responsible : (t.responsible || ''),
+                            schedule: Array.isArray(ov.schedule) ? ov.schedule : (t.schedule || [])
+                        };
+                    });
+                    setTplRows(rows);
+                    setTplLoaded(true);
+                } catch (e) { setTplMsg('讀取失敗：' + e.message); }
+                setLoadingTpl(false);
+            };
+            const updateTplRow = (id, field, value) => setTplRows(rows => rows.map(r => r.id === id ? { ...r, [field]: value } : r));
+            const toggleTplMonth = (id, m) => setTplRows(rows => rows.map(r => {
+                if (r.id !== id) return r;
+                const s = new Set(r.schedule);
+                if (s.has(m)) s.delete(m); else s.add(m);
+                return { ...r, schedule: [...s].sort((a, b) => a - b) };
+            }));
+            const saveTplRow = async (row) => {
+                setTplMsg('');
+                try {
+                    const body = {
+                        tpl_id: row.id,
+                        frequency: row.frequency || null,
+                        schedule: row.schedule || [],
+                        threshold: (row.threshold === '' || row.threshold == null) ? null : Number(row.threshold),
+                        target_staff: row.targetStaff || null,
+                        responsible: row.responsible || null
+                    };
+                    const res = await fetch(`${supabaseUrl}/rest/v1/template_overrides`, {
+                        method: 'POST',
+                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+                        body: JSON.stringify(body)
+                    });
+                    if (!res.ok) throw new Error(await res.text());
+                    setTplMsg(`✅ 已儲存「${row.name}」，各機構帳號重新整理後即生效。`);
+                } catch (e) { setTplMsg('❌ 儲存失敗：' + e.message); }
+            };
+            const tplScheduleRow = tplScheduleEditId ? tplRows.find(r => r.id === tplScheduleEditId) : null;
+
             const handleCreateUser = async (e) => {
                 e.preventDefault();
                 setCreating(true);
@@ -847,6 +909,87 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div className="mt-6 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 animate-fade-in">
+                                <div className="flex flex-wrap justify-between items-center gap-3 mb-2">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">🛠️ 評核項目統一設定</h3>
+                                    <button onClick={loadTplSettings} disabled={loadingTpl} className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1.5 rounded-lg font-bold shadow-sm disabled:opacity-50">
+                                        {loadingTpl ? '載入中...' : (tplLoaded ? '🔄 重新載入' : '📋 載入項目設定')}
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">統一修改各評核項目的「監測頻率／表定月份／閾值／被稽核人員／負責人」。儲存後對<b>所有機構一致生效</b>（各機構帳號重新整理即更新）。報表上仍可用「📅 表定月」對特定年度個別覆寫。</p>
+                                {tplMsg && <div className="bg-slate-50 border text-slate-700 p-3 rounded-lg text-xs mb-3 font-bold">{tplMsg}</div>}
+                                {tplLoaded && (
+                                    <div className="overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar border rounded-xl">
+                                        <table className="w-full text-left text-[11px]">
+                                            <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="p-2 min-w-[150px]">項目</th>
+                                                    <th className="p-2 w-24 text-center">監測頻率</th>
+                                                    <th className="p-2 w-14 text-center">閾值</th>
+                                                    <th className="p-2 w-28 text-center">被稽核人員</th>
+                                                    <th className="p-2 w-24 text-center">負責人</th>
+                                                    <th className="p-2 w-44 text-center">表定月份</th>
+                                                    <th className="p-2 w-14 text-center">儲存</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {tplRows.map(row => (
+                                                    <tr key={row.id} className="hover:bg-slate-50">
+                                                        <td className="p-2 font-bold text-slate-700">{row.name}</td>
+                                                        <td className="p-1"><input value={row.frequency} onChange={e => updateTplRow(row.id, 'frequency', e.target.value)} className="w-full text-center border rounded p-1 outline-none focus:border-blue-400" /></td>
+                                                        <td className="p-1"><input type="number" value={row.threshold} onChange={e => updateTplRow(row.id, 'threshold', e.target.value)} className="w-full text-center border rounded p-1 outline-none focus:border-blue-400" /></td>
+                                                        <td className="p-1"><input value={row.targetStaff} onChange={e => updateTplRow(row.id, 'targetStaff', e.target.value)} className="w-full text-center border rounded p-1 outline-none focus:border-blue-400" /></td>
+                                                        <td className="p-1"><input value={row.responsible} onChange={e => updateTplRow(row.id, 'responsible', e.target.value)} className="w-full text-center border rounded p-1 outline-none focus:border-blue-400" /></td>
+                                                        <td className="p-1 text-center">
+                                                            <button onClick={() => setTplScheduleEditId(row.id)} className="text-[10px] bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 px-2 py-1 rounded-full">
+                                                                {row.schedule.length > 0 ? row.schedule.map(m => m + '月').join('、') : '未設定'}
+                                                            </button>
+                                                        </td>
+                                                        <td className="p-1 text-center"><button onClick={() => saveTplRow(row)} className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded font-bold whitespace-nowrap">儲存</button></td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                                <details className="mt-3 text-[11px] text-slate-500">
+                                    <summary className="cursor-pointer font-bold">⚙️ 首次使用需先在 Supabase 建立資料表（點此展開 SQL）</summary>
+                                    <pre className="bg-slate-800 text-slate-100 p-3 rounded-lg mt-2 overflow-x-auto text-[10px] leading-relaxed">{`CREATE TABLE template_overrides (
+  tpl_id TEXT PRIMARY KEY,
+  frequency TEXT,
+  schedule JSONB,
+  threshold NUMERIC,
+  target_staff TEXT,
+  responsible TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE template_overrides ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
+                                </details>
+                            </div>
+                            {tplScheduleRow && (
+                                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setTplScheduleEditId(null)}>
+                                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                                        <div>
+                                            <h3 className="font-bold text-slate-800 text-lg">📅 表定監測月份</h3>
+                                            <p className="text-xs text-slate-500 mt-1">{tplScheduleRow.name}</p>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
+                                                const on = tplScheduleRow.schedule.includes(m);
+                                                return (
+                                                    <button key={m} onClick={() => toggleTplMonth(tplScheduleRow.id, m)} className={`py-2 rounded-lg text-sm font-bold border transition-all ${on ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400'}`}>{m}月</button>
+                                                );
+                                            })}
+                                        </div>
+                                        <p className="text-[11px] text-amber-600">關閉後記得回該列按「儲存」才會寫入雲端。</p>
+                                        <div className="flex justify-end pt-1">
+                                            <button onClick={() => setTplScheduleEditId(null)} className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm">完成</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="mt-6 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 animate-fade-in">
                                 <div className="flex flex-wrap justify-between items-center gap-3 mb-2">
@@ -1821,25 +1964,46 @@
                     
 
                     // 2. \u8b80\u53d6\u984c\u5eab
-                    const tplRes = await fetch(`${supabaseUrl}/rest/v1/audit_templates?select=*`, { headers });
-                    if (tplRes.ok) {
-                        const tpls = await tplRes.json();
-                        if (tpls.length > 0) {
-                            const cloudTpls = tpls.map(t => ({
+                    let cloudTpls = [];
+                    try {
+                        const tplRes = await fetch(`${supabaseUrl}/rest/v1/audit_templates?select=*`, { headers });
+                        if (tplRes.ok) {
+                            const tpls = await tplRes.json();
+                            cloudTpls = tpls.map(t => ({
                                 id: t.id, name: t.name, mainCategory: t.main_category, subCategory: t.sub_category,
                                 targetStaff: t.target_staff, responsible: t.responsible, frequency: t.frequency,
                                 schedule: t.schedule, threshold: t.threshold, isDual: t.is_dual, items: t.items
                             }));
-                            
-                            // 關鍵修復：強制以程式碼中的 DEFAULT_TEMPLATES 為主，避免被雲端舊資料覆蓋
-                            setTemplates(prev => {
-                                const customCloudTpls = cloudTpls.filter(ct => !DEFAULT_TEMPLATES.some(dt => dt.id === ct.id));
-                                const merged = [...DEFAULT_TEMPLATES, ...customCloudTpls];
-                                Storage.saveTemplates(merged);
-                                return merged;
-                            });
                         }
-                    }
+                    } catch (e) { console.error(`讀取題庫失敗:`, e); }
+
+                    // 讀取統一設定覆寫（存於 template_overrides，改了對所有機構一致生效）
+                    const overridesMap = {};
+                    try {
+                        const ovRes = await fetch(`${supabaseUrl}/rest/v1/template_overrides?select=*`, { headers });
+                        if (ovRes.ok) {
+                            (await ovRes.json()).forEach(o => { overridesMap[o.tpl_id] = o; });
+                        }
+                    } catch (e) { console.error(`讀取項目統一設定失敗:`, e); }
+
+                    // 關鍵修復：強制以程式碼中的 DEFAULT_TEMPLATES 為主，避免被雲端舊資料覆蓋；再套用統一設定覆寫。
+                    setTemplates(prev => {
+                        const customCloudTpls = cloudTpls.filter(ct => !DEFAULT_TEMPLATES.some(dt => dt.id === ct.id));
+                        const merged = [...DEFAULT_TEMPLATES, ...customCloudTpls].map(t => {
+                            const ov = overridesMap[t.id];
+                            if (!ov) return t;
+                            return {
+                                ...t,
+                                frequency: (ov.frequency != null && ov.frequency !== ``) ? ov.frequency : t.frequency,
+                                schedule: Array.isArray(ov.schedule) ? ov.schedule : t.schedule,
+                                threshold: (ov.threshold != null) ? ov.threshold : t.threshold,
+                                targetStaff: (ov.target_staff != null && ov.target_staff !== ``) ? ov.target_staff : t.targetStaff,
+                                responsible: (ov.responsible != null && ov.responsible !== ``) ? ov.responsible : t.responsible
+                            };
+                        });
+                        Storage.saveTemplates(merged);
+                        return merged;
+                    });
 
                     // 3. 讀取人員名單
                     // 管理員/生福課：讀取全部。一般帳號：依「機構(unit)」讀取，非個人帳號，讓同機構不同電腦共享。
