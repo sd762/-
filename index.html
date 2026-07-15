@@ -3471,6 +3471,54 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 showAlert('💾 紀錄已儲存！');
             };
 
+            // 產生「匯入範本」：每個考核一張工作表，欄位名稱與匯入程式完全對齊，附範例列與說明頁。
+            const handleDownloadImportTemplates = () => {
+                try {
+                    const wb = window.XLSX.utils.book_new();
+                    const usedNames = {};
+                    const guide = [
+                        ['匯入範本使用說明'],
+                        ['1. 每個考核項目一張工作表，標題列已對齊系統匯入格式，請勿更改標題文字。'],
+                        ['2. 第 2 列為範例，照格式往下填即可；填完可保留或刪除範例列。'],
+                        ['3.「稽核項目」欄請保持工作表預設值（系統據此判斷考核種類），勿更動。'],
+                        ['4. 日期格式：西元 YYYY-MM-DD（如 2026-07-01）或民國 1150701 皆可。'],
+                        ['5. 匯入時「機構」由匯入視窗選擇，範本內免填機構欄。'],
+                        ['6. 洗手遵從性及正確性為雙指標：請填「總評分(遵從率)」與「總評分(正確率)」兩欄。'],
+                        ['7. 其他考核：各「項N_項目」欄填該項得分（滿分見範例），未達滿分即視為部分/未達。']
+                    ];
+                    const gws = window.XLSX.utils.aoa_to_sheet(guide);
+                    gws['!cols'] = [{ wch: 64 }];
+                    window.XLSX.utils.book_append_sheet(wb, gws, '說明');
+
+                    templates.forEach(tpl => {
+                        const isDual = !!tpl.isDual;
+                        let headers, example;
+                        if (isDual) {
+                            headers = ['稽核日期', '稽核項目', '受測對象(姓名)', '職務', '稽核人員', '總評分(遵從率)', '總評分(正確率)', '總結建議'];
+                            example = ['2026-07-01', tpl.name, '範例-王小明', '護理師', '感控專責', 95, 92, ''];
+                        } else {
+                            const itemCols = (tpl.items || []).map((it, i) => `項${i + 1}_${it.name}`);
+                            const itemVals = (tpl.items || []).map(it => (it.maxScore != null ? it.maxScore : ''));
+                            headers = ['稽核日期', '稽核項目', '受測對象(姓名)', '職務', '稽核人員', ...itemCols, '總評分', '總結建議'];
+                            example = ['2026-07-01', tpl.name, '範例-王小明', '照服員', '品管組長', ...itemVals, '', ''];
+                        }
+                        const ws = window.XLSX.utils.aoa_to_sheet([headers, example]);
+                        ws['!cols'] = headers.map(h => ({ wch: Math.max(12, Math.min(30, String(h).length * 2)) }));
+                        // 工作表名稱：Excel 限 31 字、不可含 \ / ? * [ ] :，且需唯一
+                        let sn = String(tpl.name).replace(/[\\\/\?\*\[\]:]/g, '').substring(0, 28);
+                        if (usedNames[sn]) { usedNames[sn]++; sn = sn.substring(0, 25) + '_' + usedNames[sn]; } else { usedNames[sn] = 1; }
+                        window.XLSX.utils.book_append_sheet(wb, ws, sn);
+                    });
+                    const out = window.XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+                    const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = '各考核_匯入範本.xlsx'; a.click();
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    showAlert('產生範本失敗：' + (err.message || String(err)));
+                }
+            };
+
             const handleReverseImport = async (e, targetUnit) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
@@ -3883,6 +3931,12 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                                 {importTargetUnit ? "點擊選擇 Excel 檔案" : "請先選擇機構"}
                                                 <input type="file" multiple accept=".xlsx, .xls" disabled={!importTargetUnit} onChange={(e) => { handleReverseImport(e, importTargetUnit); setShowHistoryImportModal(false); setImportTargetUnit(''); }} className="hidden" />
                                             </label>
+                                        </div>
+                                        <div className="pt-2 border-t border-slate-100">
+                                            <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">不確定檔案格式？先下載範本，每個考核一張工作表，欄位已對齊系統格式，照著填即可避免匯入錯誤。</p>
+                                            <button onClick={handleDownloadImportTemplates} className="w-full py-2.5 rounded-xl font-bold text-sm border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors flex items-center justify-center gap-2">
+                                                <IconDownload /> 下載各考核匯入範本 (Excel)
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
