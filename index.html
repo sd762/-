@@ -3483,31 +3483,53 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         ['3.「稽核項目」欄請保持工作表預設值（系統據此判斷考核種類），勿更動。'],
                         ['4. 日期格式：西元 YYYY-MM-DD（如 2026-07-01）或民國 1150701 皆可。'],
                         ['5. 匯入時「機構」由匯入視窗選擇，範本內免填機構欄。'],
-                        ['6. 洗手遵從性及正確性為雙指標：請填「總評分(遵從率)」與「總評分(正確率)」兩欄。'],
+                        ['6. 洗手遵從性及正確性：依技術分表（洗手-備餐餵食、洗手-抽痰…）。每個洗手機會有兩欄：'],
+                        ['   「洗手行動N」填 乾洗手／濕洗手／沒有洗手；「步驟N」填 確實／未確實（沒有洗手則留空）。'],
+                        ['   遵從率、正確率由系統依明細自動計算，免手動填。技術=其他者無固定時機，改填兩個總分。'],
                         ['7. 其他考核：各「項N_項目」欄填該項得分（滿分見範例），未達滿分即視為部分/未達。']
                     ];
                     const gws = window.XLSX.utils.aoa_to_sheet(guide);
                     gws['!cols'] = [{ wch: 64 }];
                     window.XLSX.utils.book_append_sheet(wb, gws, '說明');
 
-                    templates.forEach(tpl => {
-                        const isDual = !!tpl.isDual;
-                        let headers, example;
-                        if (isDual) {
-                            headers = ['稽核日期', '稽核項目', '受測對象(姓名)', '職務', '稽核人員', '總評分(遵從率)', '總評分(正確率)', '總結建議'];
-                            example = ['2026-07-01', tpl.name, '範例-王小明', '護理師', '感控專責', 95, 92, ''];
-                        } else {
-                            const itemCols = (tpl.items || []).map((it, i) => `項${i + 1}_${it.name}`);
-                            const itemVals = (tpl.items || []).map(it => (it.maxScore != null ? it.maxScore : ''));
-                            headers = ['稽核日期', '稽核項目', '受測對象(姓名)', '職務', '稽核人員', ...itemCols, '總評分', '總結建議'];
-                            example = ['2026-07-01', tpl.name, '範例-王小明', '照服員', '品管組長', ...itemVals, '', ''];
-                        }
+                    const appendSheet = (name, headers, example) => {
                         const ws = window.XLSX.utils.aoa_to_sheet([headers, example]);
                         ws['!cols'] = headers.map(h => ({ wch: Math.max(12, Math.min(30, String(h).length * 2)) }));
                         // 工作表名稱：Excel 限 31 字、不可含 \ / ? * [ ] :，且需唯一
-                        let sn = String(tpl.name).replace(/[\\\/\?\*\[\]:]/g, '').substring(0, 28);
+                        let sn = String(name).replace(/[\\\/\?\*\[\]:]/g, '').substring(0, 28);
                         if (usedNames[sn]) { usedNames[sn]++; sn = sn.substring(0, 25) + '_' + usedNames[sn]; } else { usedNames[sn] = 1; }
                         window.XLSX.utils.book_append_sheet(wb, ws, sn);
+                    };
+
+                    templates.forEach(tpl => {
+                        if (tpl.isDual) {
+                            // 洗手遵從性及正確性：依「技術」分表，每個洗手機會有「洗手行動N」「步驟N」明細欄，匯入後可完整還原稽核明細。
+                            Object.keys(DUAL_TECHNIQUES).forEach(tech => {
+                                const timings = DUAL_TECHNIQUES[tech] || [];
+                                if (timings.length === 0) {
+                                    // 其他：無固定時機，只填兩個總分
+                                    appendSheet(`洗手-${tech}`,
+                                        ['稽核日期', '稽核項目', '受測對象(姓名)', '職務', '稽核人員', '總評分(遵從率)', '總評分(正確率)', '總結建議'],
+                                        ['2026-07-01', `${tpl.name} (${tech})`, '範例-王小明', '護理師', '感控專責', 95, 92, '']);
+                                    return;
+                                }
+                                const headers = ['稽核日期', '稽核項目', '受測對象(姓名)', '職務', '稽核人員'];
+                                const example = ['2026-07-01', `${tpl.name} (${tech})`, '範例-王小明', '護理師', '感控專責'];
+                                timings.forEach((t, i) => {
+                                    headers.push(`洗手行動${i + 1}｜${t.name}`, `步驟${i + 1}｜${t.name}`);
+                                    example.push(i === 0 ? '濕洗手' : '乾洗手', '確實');
+                                });
+                                headers.push('總結建議');
+                                example.push('');
+                                appendSheet(`洗手-${tech}`, headers, example);
+                            });
+                        } else {
+                            const itemCols = (tpl.items || []).map((it, i) => `項${i + 1}_${it.name}`);
+                            const itemVals = (tpl.items || []).map(it => (it.maxScore != null ? it.maxScore : ''));
+                            appendSheet(tpl.name,
+                                ['稽核日期', '稽核項目', '受測對象(姓名)', '職務', '稽核人員', ...itemCols, '總評分', '總結建議'],
+                                ['2026-07-01', tpl.name, '範例-王小明', '照服員', '品管組長', ...itemVals, '', '']);
+                        }
                     });
                     const out = window.XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
                     const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -3559,7 +3581,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                 data = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { raw: true, defval: '' });
                             }
 
-                            const validData = data.filter(row => row['稽核人員'] !== '平均總分' && (row['稽核日期'] || row['日期']) && !String(row['稽核日期'] || row['日期']).includes('覆核者'));
+                            const validData = data.filter(row => row['稽核人員'] !== '平均總分' && (row['稽核日期'] || row['日期']) && !String(row['稽核日期'] || row['日期']).includes('覆核者') && !String(row['受測對象(姓名)'] || row['受測對象'] || '').includes('範例'));
 
                             const imported = validData.map((row, index) => {
                                 const rawAuditName = String(row['稽核項目'] || row['項目'] || '');
@@ -3627,6 +3649,46 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     });
                                 }
 
+                                // 洗手遵從性及正確性：依技術還原每個洗手機會的明細（乾/濕洗手、確實與否），並依明細自動計算遵從率/正確率
+                                let finalScore, finalScore2;
+                                if (isDualItem) {
+                                    const techMatch = rawAuditName.match(/[（(]\s*(.+?)\s*[)）]/);
+                                    const technique = techMatch ? techMatch[1].trim() : '其他';
+                                    finalAuditName = `洗手遵從性及正確性 (${technique})`;
+                                    const timings = DUAL_TECHNIQUES[technique] || [];
+                                    const numOf = (prefix, k) => { const m = k.match(new RegExp('^' + prefix + '\\s*(\\d+)')); return m ? parseInt(m[1], 10) : 999; };
+                                    const compKeys = Object.keys(row).filter(k => /^洗手行動\s*\d+/.test(k)).sort((a, b) => numOf('洗手行動', a) - numOf('洗手行動', b));
+                                    const accKeys = Object.keys(row).filter(k => /^步驟\s*\d+/.test(k)).sort((a, b) => numOf('步驟', a) - numOf('步驟', b));
+                                    if (timings.length > 0 && compKeys.length > 0) {
+                                        timings.forEach((t, i) => {
+                                            const compVal = String(row[compKeys[i]] != null ? row[compKeys[i]] : '').trim();
+                                            const accVal = String((accKeys[i] != null && row[accKeys[i]] != null) ? row[accKeys[i]] : '').trim();
+                                            let comp = null;
+                                            if (compVal.includes('乾')) comp = 'dry';
+                                            else if (compVal.includes('濕')) comp = 'wet';
+                                            let acc = null;
+                                            if (comp) {
+                                                if (accVal.includes('未')) acc = 'no';
+                                                else if (accVal.includes('確實') || accVal.includes('是') || accVal.includes('有')) acc = 'yes';
+                                            }
+                                            checklist.push({ id: Math.random().toString(36).substr(2, 9), name: t.name, comp, acc, note: '' });
+                                        });
+                                    }
+                                    if (checklist.length > 0) {
+                                        const total = checklist.length;
+                                        const washed = checklist.filter(x => x.comp === 'dry' || x.comp === 'wet').length;
+                                        const correct = checklist.filter(x => (x.comp === 'dry' || x.comp === 'wet') && x.acc === 'yes').length;
+                                        finalScore = total > 0 ? Math.round(washed / total * 100) : 0;
+                                        finalScore2 = washed > 0 ? Math.round(correct / washed * 100) : 0;
+                                    } else {
+                                        finalScore = Number(row['總評分(遵從率)'] || row['總評分'] || 0);
+                                        finalScore2 = Number(row['總評分(正確率)'] || 0);
+                                    }
+                                } else {
+                                    finalScore = Number(row['總評分(遵從率)'] || row['總評分'] || 0);
+                                    finalScore2 = '';
+                                }
+
                                 const parsedUnit = String(row['受稽單位'] || row['單位'] || '').trim();
                                 let finalUnit = '';
                                 if (targetUnit && targetUnit !== 'AUTO') {
@@ -3644,8 +3706,8 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     jobTitle: String(row['職務'] || ''),
                                     target: String(row['受測對象(姓名)'] || row['受測對象']),
                                     auditor: String(row['稽核人員'] || row['稽核員']),
-                                    score: Number(row['總評分(遵從率)'] || row['總評分'] || 0),
-                                    score2: isDualItem ? Number(row['總評分(正確率)'] || 0) : '',
+                                    score: finalScore,
+                                    score2: finalScore2,
                                     isDual: isDualItem, notes: String(row['總結建議'] || ''), checklist: checklist
                                 };
                             });
