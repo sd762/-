@@ -1740,6 +1740,16 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             const [personnelData, setPersonnelData] = useState(() => Storage.getPersonnel());
             const personnelSyncedRef = React.useRef(false);
             const [showPersonnelModal, setShowPersonnelModal] = useState(false);
+            // 批次快速建檔：一次選多人、同項目同日期，設定分數範圍一鍵生成
+            const [showBatchGenModal, setShowBatchGenModal] = useState(false);
+            const [batchDate, setBatchDate] = useState('');
+            const [batchAuditor, setBatchAuditor] = useState('');
+            const [batchTechnique, setBatchTechnique] = useState('');
+            const [batchTargets, setBatchTargets] = useState(new Set());
+            const [batchScoreMin, setBatchScoreMin] = useState(90);
+            const [batchScoreMax, setBatchScoreMax] = useState(100);
+            const [batchScore2Min, setBatchScore2Min] = useState(90);
+            const [batchScore2Max, setBatchScore2Max] = useState(100);
             const [dialog, setDialog] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null, onCancel: null });
             const [filterMonth, setFilterMonth] = useState('');
             const [historySortBy, setHistorySortBy] = useState('date_desc'); // 紀錄庫排序方式
@@ -3393,6 +3403,47 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 setChecklist(nl);
             };
 
+            // 共用：把一筆紀錄同步寫入雲端（單筆送出、批次快速建檔皆呼叫此函式，避免邏輯分岔）
+            const saveRecordToCloud = async (rec, templateId) => {
+                if (!session) return;
+                try {
+                    const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67',
+                            'Authorization': `Bearer ${session.access_token}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'return=minimal'
+                        },
+                        body: JSON.stringify({
+                            audit_content: {
+                                date: rec.date,
+                                templateId: templateId,
+                                auditName: rec.auditName,
+                                unitCategory: rec.unitCategory,
+                                unit: String(rec.unit || '').trim(),
+                                target: rec.target,
+                                jobTitle: rec.jobTitle,
+                                auditor: rec.auditor,
+                                score: rec.score,
+                                score2: rec.score2,
+                                notes: rec.notes,
+                                isDual: !!rec.isDual,
+                                technique: rec.technique,
+                                checklist: rec.checklist
+                            },
+                            user_id: session.user.id
+                        })
+                    });
+                    if (!res.ok) {
+                        const errText = await res.text();
+                        console.error('同步至雲端失敗:', res.status, errText);
+                    }
+                } catch (err) {
+                    console.error('雲端存檔錯誤:', err);
+                }
+            };
+
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 if (!formData.target) return showAlert('請輸入受測對象姓名！');
@@ -3424,51 +3475,132 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
 
                 // 更新本地狀態
                 setRecords(prev => [newRec, ...prev]);
-
-                // 如果已登入，同步到雲端
-                if (session) {
-                    try {
-                        const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
-                            method: 'POST',
-                            headers: {
-                                'apikey': 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67',
-                                'Authorization': `Bearer ${session.access_token}`,
-                                'Content-Type': 'application/json',
-                                'Prefer': 'return=minimal'
-                            },
-                            body: JSON.stringify({
-                                audit_content: {
-                                    date: newRec.date,
-                                    templateId: currentTemplateId,
-                                    auditName: newRec.auditName,
-                                    unitCategory: newRec.unitCategory,
-                                    unit: String(newRec.unit || '').trim(),
-                                    target: newRec.target,
-                                    jobTitle: newRec.jobTitle,
-                                    auditor: newRec.auditor,
-                                    score: newRec.score,
-                                    score2: newRec.score2,
-                                    notes: newRec.notes,
-                                    isDual: !!newRec.isDual,
-                                    technique: newRec.technique,
-                                    checklist: newRec.checklist
-                                },
-                                user_id: session.user.id
-                            })
-                        });
-                        if (!res.ok) {
-                            const errText = await res.text();
-                            console.error('\u540c\u6b65\u81f3\u96f2\u7aef\u5931\u6557:', res.status, errText);
-                        }
-                    } catch (err) {
-                        console.error('\u96f2\u7aef\u5b58\u6a94\u932f\u8aa4:', err);
-                    }
-                }
+                await saveRecordToCloud(newRec, currentTemplateId);
 
                 setFormData(p => ({ ...p, target: '', jobTitle: '', score: '', score2: '', notes: '' }));
                 if (formData.isDual) setChecklist(checklist.map(i => ({ ...i, comp: null, acc: null, note: '' })));
                 else setChecklist(checklist.map(i => ({ ...i, score: i.maxScore, note: '', mode: 'full' })));
                 showAlert('💾 紀錄已儲存！');
+            };
+
+            // 批次快速建檔：一次選多人、同項目同日期，各人分數在指定範圍內隨機生成
+            const openBatchGenModal = () => {
+                if (!currentTemplateId && !formData.auditName) return showAlert('請先選擇稽核項目！');
+                if (!formData.unit) return showAlert('請先選擇機構！');
+                if (formData.isDual && !formData.technique) return showAlert('請先選擇護理技術項目（洗手時機依技術而定）！');
+                setBatchDate(formData.date || new Date().toISOString().split('T')[0]);
+                setBatchAuditor(formData.auditor || '');
+                setBatchTechnique(formData.technique || '');
+                setBatchTargets(new Set());
+                setShowBatchGenModal(true);
+            };
+
+            const handleBatchGenerate = async () => {
+                if (batchTargets.size === 0) return showAlert('請至少勾選一位受測人員！');
+                const min1 = Number(batchScoreMin), max1 = Number(batchScoreMax);
+                if (isNaN(min1) || isNaN(max1) || min1 > max1 || min1 < 0 || max1 > 100) return showAlert('分數範圍不正確，請輸入 0~100 之間、最小值不大於最大值！');
+                let min2 = 0, max2 = 100;
+                if (formData.isDual) {
+                    min2 = Number(batchScore2Min); max2 = Number(batchScore2Max);
+                    if (isNaN(min2) || isNaN(max2) || min2 > max2 || min2 < 0 || max2 > 100) return showAlert('正確率分數範圍不正確，請輸入 0~100 之間、最小值不大於最大值！');
+                }
+
+                const finalAuditName = formData.isDual ? `${formData.auditName} (${batchTechnique})` : formData.auditName;
+                const recMonth = batchDate?.substring(0, 7);
+                const randIn = (mn, mx) => Math.floor(Math.random() * (mx - mn + 1)) + mn;
+                const template = templates.find(t => t.id === currentTemplateId);
+
+                // 依人員在名單中的分類自動帶入職務，讓批次紀錄與逐項輸入一致（匯出職位欄不再空白）
+                const catToJob = { '護理類': '護理師', '照服類': '照服員', '行政類': '行政人員' };
+                const findJobTitle = (name) => {
+                    const ud = personnelData[formData.unit] || {};
+                    for (const cat of ['護理類', '照服類', '行政類']) {
+                        if ((ud[cat] || []).includes(name)) return catToJob[cat] || '';
+                    }
+                    return '';
+                };
+
+                // 依目標總分產生「逐項明細」，讓批次紀錄與逐項輸入內容一致，查核時有完整依據。
+                const genForPerson = () => {
+                    if (formData.isDual) {
+                        // 雙指標(洗手)：依技術的洗手機會，分配乾/濕洗手與確實與否，再回算遵從率/正確率
+                        const timings = DUAL_TECHNIQUES[batchTechnique] || [];
+                        const total = timings.length;
+                        if (total === 0) return { checklist: [], score: randIn(min1, max1), score2: randIn(min2, max2) };
+                        const targetComp = randIn(min1, max1);
+                        const targetAcc = randIn(min2, max2);
+                        const washed = Math.round(total * targetComp / 100);
+                        const correct = Math.round(washed * targetAcc / 100);
+                        const checklist = timings.map((t, i) => {
+                            let comp = null, acc = null;
+                            if (i < washed) { comp = Math.random() < 0.5 ? 'dry' : 'wet'; acc = (i < correct) ? 'yes' : 'no'; }
+                            return { id: Math.random().toString(36).substr(2, 9), name: t.name, comp, acc, note: '' };
+                        });
+                        const w = checklist.filter(x => x.comp === 'dry' || x.comp === 'wet').length;
+                        const c = checklist.filter(x => (x.comp === 'dry' || x.comp === 'wet') && x.acc === 'yes').length;
+                        return { checklist, score: total > 0 ? Math.round(w / total * 100) : 0, score2: w > 0 ? Math.round(c / w * 100) : 0 };
+                    }
+                    // 一般考核：以各項滿分為基底，依目標百分比隨機扣分至各評分項，回算實際總分
+                    const items = (template && template.items) ? template.items : [];
+                    if (items.length === 0) return { checklist: [], score: randIn(min1, max1), score2: '' };
+                    const totalMax = items.reduce((a, it) => a + (Number(it.maxScore) || 0), 0);
+                    const targetPct = randIn(min1, max1);
+                    const itemScores = items.map(it => Number(it.maxScore) || 0);
+                    let deduct = Math.max(0, Math.round(totalMax * (100 - targetPct) / 100));
+                    let guard = 0;
+                    while (deduct > 0 && guard < 100000) {
+                        const idx = Math.floor(Math.random() * items.length);
+                        if (itemScores[idx] > 0) { itemScores[idx]--; deduct--; }
+                        guard++;
+                    }
+                    const checklist = items.map((it, i) => {
+                        const sc = itemScores[i];
+                        const mx = Number(it.maxScore) || 0;
+                        return { ...it, score: sc, note: '', mode: sc === mx ? 'full' : (sc === 0 ? 'zero' : 'partial') };
+                    });
+                    const gotMax = itemScores.reduce((a, b) => a + b, 0);
+                    return { checklist, score: totalMax > 0 ? Math.round(gotMax / totalMax * 100) : targetPct, score2: '' };
+                };
+
+                const toCreate = [];
+                const skipped = [];
+                batchTargets.forEach(name => {
+                    const dup = records.find(r =>
+                        String(r.unit || '').trim() === String(formData.unit || '').trim() &&
+                        r.date?.substring(0, 7) === recMonth &&
+                        r.auditName === finalAuditName &&
+                        String(r.target).trim() === String(name).trim()
+                    );
+                    if (dup) { skipped.push(name); return; }
+                    const gen = genForPerson();
+                    toCreate.push({
+                        date: batchDate,
+                        auditor: batchAuditor,
+                        unitCategory: formData.unitCategory,
+                        unit: formData.unit,
+                        target: name,
+                        jobTitle: findJobTitle(name),
+                        auditName: finalAuditName,
+                        isDual: !!formData.isDual,
+                        technique: formData.isDual ? batchTechnique : '',
+                        score: gen.score,
+                        score2: gen.score2,
+                        notes: '',
+                        checklist: gen.checklist,
+                        id: Date.now().toString() + Math.random().toString(36).substr(2, 5)
+                    });
+                });
+
+                if (toCreate.length === 0) return showAlert(`⚠️ 選取的人員本月均已有「${finalAuditName}」紀錄，未產生任何新資料。`);
+
+                setRecords(prev => [...toCreate, ...prev]);
+                for (const rec of toCreate) {
+                    await saveRecordToCloud(rec, currentTemplateId);
+                }
+
+                setShowBatchGenModal(false);
+                setBatchTargets(new Set());
+                showAlert(`💾 已產生 ${toCreate.length} 筆紀錄！${skipped.length > 0 ? `\n（${skipped.length} 位本月已有紀錄已跳過：${skipped.join('、')}）` : ''}`);
             };
 
             // 產生「匯入範本」：每個考核一張工作表，欄位名稱與匯入程式完全對齊，附範例列與說明頁。
@@ -4089,6 +4221,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                                 <datalist id="jobTitlesList">
                                                     <option value="護理師" />
                                                     <option value="照服員" />
+                                                    <option value="行政人員" />
                                                     <option value="其他" />
                                                 </datalist>
                                             </div>
@@ -4105,9 +4238,13 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                                             onFocus={() => { if (formData.unit) setShowPersonnelDropdown(true); }}
                                                             className="w-full p-2 border-2 border-primary rounded text-sm font-bold text-primary"
                                                         />
-                                                        {showPersonnelDropdown && formData.unit && personnelData[formData.unit] && (
+                                                        {showPersonnelDropdown && formData.unit && personnelData[formData.unit] && (() => {
+                                                            // 依選定「職務」鎖定對應人員分類；未選或「其他」則列全部
+                                                            const jt = formData.jobTitle || '';
+                                                            const catsToShow = jt.includes('護理') ? ['護理類'] : jt.includes('照服') ? ['照服類'] : jt.includes('行政') ? ['行政類'] : ['護理類', '照服類', '行政類'];
+                                                            return (
                                                             <div className="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-primary/30 rounded-xl shadow-2xl z-[999] max-h-[300px] overflow-y-auto custom-scrollbar animate-fade-in">
-                                                                {['護理類', '照服類', '行政類'].map(cat => {
+                                                                {catsToShow.map(cat => {
                                                                     const people = (personnelData[formData.unit][cat] || []).filter(n => !formData.target || n.includes(formData.target));
                                                                     if (people.length === 0) return null;
                                                                     return (
@@ -4120,19 +4257,21 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                                                                 <div
                                                                                     key={`${cat}-${i}`}
                                                                                     className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 hover:text-primary font-bold transition-colors border-b border-slate-50 last:border-0"
-                                                                                    onMouseDown={(e) => { e.preventDefault(); const newJobTitle = cat === '護理類' ? '護理師' : (cat === '照服類' ? '照服員' : '其他'); setFormData(p => ({ ...p, target: name, jobTitle: newJobTitle })); setShowPersonnelDropdown(false); }}
+                                                                                    onMouseDown={(e) => { e.preventDefault(); const newJobTitle = cat === '護理類' ? '護理師' : (cat === '照服類' ? '照服員' : '行政人員'); setFormData(p => ({ ...p, target: name, jobTitle: newJobTitle })); setShowPersonnelDropdown(false); }}
                                                                                 >{name}</div>
                                                                             ))}
                                                                         </div>
                                                                     );
                                                                 })}
-                                                                {['護理類', '照服類', '行政類'].every(cat => (personnelData[formData.unit][cat] || []).filter(n => !formData.target || n.includes(formData.target)).length === 0) && (
+                                                                {catsToShow.every(cat => (personnelData[formData.unit][cat] || []).filter(n => !formData.target || n.includes(formData.target)).length === 0) && (
                                                                     <div className="p-4 text-center text-slate-400 text-sm">查無符合的人員</div>
                                                                 )}
                                                             </div>
-                                                        )}
+                                                            );
+                                                        })()}
                                                     </div>
                                                     <button type="button" onClick={() => { setShowPersonnelModal(true); setSelectedPersonnelIds(new Set()); }} disabled={!formData.unit} className="bg-primary text-white px-2 rounded text-xs shrink-0 disabled:bg-slate-300 disabled:cursor-not-allowed shadow hover:bg-blue-700 transition-colors">管理名單</button>
+                                                    <button type="button" onClick={openBatchGenModal} disabled={!formData.unit} className="bg-amber-500 text-white px-2 rounded text-xs shrink-0 disabled:bg-slate-300 disabled:cursor-not-allowed shadow hover:bg-amber-600 transition-colors whitespace-nowrap">⚡ 批次建檔</button>
                                                 </div>
                                             </div>
 
@@ -4429,7 +4568,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         {activeTab === 'manual' && (
                             <div className="animate-fade-in bg-white rounded-3xl border p-8 max-w-4xl mx-auto shadow-sm space-y-8 leading-relaxed">
                                 <div className="border-b pb-6 text-center">
-                                    <h2 className="text-3xl font-black text-primary flex items-center justify-center gap-3"><IconManual /> 系統操作手冊 <span className="bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full">版本：2.0 雲端權限版</span></h2>
+                                    <h2 className="text-3xl font-black text-primary flex items-center justify-center gap-3"><IconManual /> 系統操作手冊 <span className="bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full">版本：2.1 效率強化版</span></h2>
                                     <p className="text-slate-500 mt-2 text-sm">歡迎使用清福技術考稽核系統！本系統已全面升級為「雲端多裝置同步」架構，具備機構權限隔離、自動報表生成與強大的資料管理功能。請詳閱以下說明以發揮系統最大效益。</p>
                                 </div>
 
@@ -4444,6 +4583,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                             <li>若您在名單上做了修改，請點擊右上角的 <span className="text-emerald-600 font-bold">☁️ 立即同步</span>，更新後的名單將立刻同步至雲端，同機構的其他護理長重新整理網頁後即可共用此名單。</li>
                                         </ul>
                                         <p><strong>3. 快速打分機制與雙指標：</strong>支援「符合(滿分)、部分(自訂分數)、不符(零分)」快速給分。針對「洗手考評」，支援獨立的洗手時機與雙指標（遵從性/正確性）自動連動邏輯。</p>
+                                        <p><strong>4. ⚡ 批次快速建檔 (2.1 新增)：</strong>選好機構與考核項目後，點「受評者」旁的 <span className="text-amber-600 font-bold">⚡ 批次建檔</span> 按鈕，可一次勾選多位人員、設定分數範圍（洗手另設遵從率/正確率範圍），系統會為每人隨機生成範圍內分數並各建一筆紀錄。分數會<b>依考核項目自動分配到各評分細項（洗手則產生各時機明細）</b>，內容與逐項輸入一致，職務也會依名單分類自動帶入；本月已有紀錄者自動跳過，不會重複。</p>
                                     </div>
                                 </section>
 
@@ -4452,7 +4592,8 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     <div className="space-y-4 text-slate-700">
                                         <p><strong>1. 階層分類檢索：</strong>歷史資料會自動依「機構 &gt; 月份 &gt; 稽核項目」歸檔，點擊列表列可展開收合，方便快速找查特定紀錄。</p>
                                         <p><strong>2. 智慧排序功能 (2.0 新增)：</strong>若遇到同月份重複考核的問題，您可以使用上方的「下拉式排序選單」，將紀錄改為 <span className="text-emerald-600 font-bold">依姓名排序 (筆畫)</span> 或 <span className="text-emerald-600 font-bold">依職務排序</span>，能快速抓出重複打考績的紀錄並刪除。</p>
-                                        <p><strong>3. 批次管理與匯出：</strong>可勾選「整個月份」、「單一項目」或「單筆資料」進行批次刪除，或單獨匯出成報表。針對洗手考評，系統會自動生成符合疾管署規範的洗手報表格式。</p>
+                                        <p><strong>3. 批次管理與匯出：</strong>可勾選「整個機構、整個月份、單一項目、子項目或單筆資料」進行批次刪除，或單獨匯出成報表。針對洗手考評，系統會自動生成符合疾管署規範的洗手報表格式（每 3 人一組、含時機明細與覆核者欄）。</p>
+                                        <p><strong>4. 匯入歷史與範本 (2.1 強化)：</strong>點「匯入歷史」可將舊資料 Excel 匯入系統，並選擇歸屬機構。若不確定格式，先按 <span className="text-green-600 font-bold">下載各考核匯入範本</span>，系統會產生一份 Excel（每個考核一張工作表、欄位已對齊、附範例與說明頁），照著填即可避免匯入錯誤。<b>洗手遵從性及正確性依技術分表</b>，每個洗手機會有「洗手行動／步驟」欄，匯入後可完整還原時機明細並自動計算遵從率/正確率。</p>
                                     </div>
                                 </section>
 
@@ -4460,8 +4601,9 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     <h3 className="font-bold text-xl text-slate-800 mb-4 bg-purple-50 inline-block px-4 py-2 rounded-lg border-l-4 border-purple-600 flex items-center gap-2"><IconChart /> 三、分析報表 (評鑑與表單產出)</h3>
                                     <div className="space-y-4 text-slate-700">
                                         <p><strong>1. 自動統計與跨機構篩選：</strong>系統自動統計各月份成績。一般帳號僅能產出自己機構的報表；管理員帳號則可於頂部選擇特定機構或分館進行全局篩選。</p>
-                                        <p><strong>2. 彈性分析覆寫：</strong>點擊月份單元格，可手動輸入紙本成績或覆寫系統成績（手動輸入將強制取代系統原成績）。</p>
-                                        <p><strong>3. 匯出分析總表：</strong>點選「匯出分析總表」，系統會將當前條件下的表格匯出為 Excel 報表，直接用於繳交評鑑資料。</p>
+                                        <p><strong>2. 彈性分析覆寫：</strong>點擊月份單元格，可手動輸入紙本成績或覆寫系統成績（手動輸入將強制取代系統原成績）。手動填入的分數<b>依機構分開儲存</b>，切換不同機構不會互相殘留。</p>
+                                        <p><strong>3. 各年度表定月份 (2.1 新增)：</strong>每個項目的「監測頻率」下方有 <span className="text-blue-600 font-bold">📅 表定月</span> 按鈕，可設定該項目某年度的表定監測月份（灰底），依年度分開儲存。列首的 👁 圖示可關閉不需顯示的項目列。</p>
+                                        <p><strong>4. 匯出分析總表：</strong>點選「匯出分析總表」，系統會將當前條件下的表格匯出為 Excel 報表，直接用於繳交評鑑資料。</p>
                                     </div>
                                 </section>
 
@@ -4474,6 +4616,8 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                         <ul className="list-disc pl-6 space-y-1 mt-1">
                                             <li>具備「生福課」或最高管理員權限的帳號，可以跨機構查閱所有分館的稽核紀錄與報表。</li>
                                             <li>管理員擁有專屬的 **「系統後台」**，可執行全系統的資料強制同步（紀錄庫與題庫）、匯出全站 JSON 備份檔，以及進行帳號的「新增、刪除、Email 修改與機構綁定」。</li>
+                                            <li><b>🛠️ 評核項目統一設定 (2.1 新增)</b>：可集中修改各評核項目的「監測頻率／表定月份／閾值／被稽核人員／負責人」，儲存後對<b>所有機構一致生效</b>，不必逐一調整。</li>
+                                            <li><b>🗑️ 刪除紀錄查察 (2.1 新增)</b>：所有刪除動作（單筆／批次／清除重複／刪除帳號）會自動留下軌跡，依機構分類顯示操作時間、操作者與被刪內容，方便查核。</li>
                                         </ul>
                                     </div>
                                 </section>
@@ -4484,6 +4628,84 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                             <AdminPanel handleTemplateUpload={handleTemplateUpload} handleExportBackup={handleExportBackup} handleImportBackup={handleImportBackup} handleDeduplicateRecords={handleDeduplicateRecords} session={session} />
                         )}
                     </main>
+
+                    {showBatchGenModal && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-fade-in">
+                            <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[92vh]">
+                                <div className="flex justify-between items-center mb-3 border-b pb-2">
+                                    <h3 className="font-bold text-lg text-amber-600 flex items-center gap-2">⚡ 批次快速建檔</h3>
+                                    <button onClick={() => setShowBatchGenModal(false)} className="text-slate-400 hover:text-slate-700 text-xl">✕</button>
+                                </div>
+                                <div className="text-xs bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-amber-800 leading-relaxed">
+                                    考核項目：<b>{formData.auditName}{formData.isDual && batchTechnique ? ` (${batchTechnique})` : ''}</b>　機構：<b>{formData.unit}</b><br />
+                                    勾選多位人員、設定分數範圍，系統會為每人隨機生成範圍內分數並各建一筆紀錄（本月已有紀錄者自動跳過）。
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <div><label className="text-[10px] font-bold text-slate-400 uppercase">日期</label><input type="date" value={batchDate} onChange={e => setBatchDate(e.target.value)} className="w-full p-2 border border-slate-200 rounded text-sm" /></div>
+                                    <div><label className="text-[10px] font-bold text-slate-400 uppercase">稽核員</label><input type="text" placeholder="姓名" value={batchAuditor} onChange={e => setBatchAuditor(e.target.value)} className="w-full p-2 border border-slate-200 rounded text-sm" /></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-blue-500 uppercase">{formData.isDual ? '遵從率範圍(%)' : '總分範圍(%)'}</label>
+                                        <div className="flex items-center gap-1">
+                                            <input type="number" min="0" max="100" value={batchScoreMin} onChange={e => setBatchScoreMin(e.target.value)} className="w-full p-2 border border-slate-200 rounded text-sm text-center" />
+                                            <span className="text-slate-400">~</span>
+                                            <input type="number" min="0" max="100" value={batchScoreMax} onChange={e => setBatchScoreMax(e.target.value)} className="w-full p-2 border border-slate-200 rounded text-sm text-center" />
+                                        </div>
+                                    </div>
+                                    {formData.isDual && (
+                                        <div>
+                                            <label className="text-[10px] font-bold text-teal-500 uppercase">正確率範圍(%)</label>
+                                            <div className="flex items-center gap-1">
+                                                <input type="number" min="0" max="100" value={batchScore2Min} onChange={e => setBatchScore2Min(e.target.value)} className="w-full p-2 border border-slate-200 rounded text-sm text-center" />
+                                                <span className="text-slate-400">~</span>
+                                                <input type="number" min="0" max="100" value={batchScore2Max} onChange={e => setBatchScore2Max(e.target.value)} className="w-full p-2 border border-slate-200 rounded text-sm text-center" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">選擇受測人員（已選 {batchTargets.size} 位）</label>
+                                    {(() => {
+                                        const allNames = personnelData[formData.unit] ? Object.values(personnelData[formData.unit]).flat() : [];
+                                        const allSel = allNames.length > 0 && allNames.every(n => batchTargets.has(n));
+                                        return (
+                                            <button type="button" onClick={() => setBatchTargets(allSel ? new Set() : new Set(allNames))} className="text-[11px] font-bold text-blue-600 hover:underline">
+                                                {allSel ? '取消全選' : '全選'}
+                                            </button>
+                                        );
+                                    })()}
+                                </div>
+                                <div className="flex-1 overflow-y-auto border rounded-xl p-2 custom-scrollbar min-h-[120px]">
+                                    {(!personnelData[formData.unit] || Object.values(personnelData[formData.unit]).flat().length === 0) ? (
+                                        <div className="text-center text-slate-400 text-sm py-8">此機構尚無人員名單，請先於現場考評的「管理名單」新增人員。</div>
+                                    ) : (
+                                        ['護理類', '照服類', '行政類'].map(cat => {
+                                            const people = (personnelData[formData.unit][cat] || []);
+                                            if (people.length === 0) return null;
+                                            return (
+                                                <div key={cat} className="mb-2">
+                                                    <div className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded">{cat}</div>
+                                                    <div className="grid grid-cols-3 gap-1 mt-1">
+                                                        {people.map(name => (
+                                                            <label key={name} className={`flex items-center gap-1.5 p-1.5 rounded cursor-pointer text-sm ${batchTargets.has(name) ? 'bg-amber-100 text-amber-800 font-bold' : 'hover:bg-slate-50'}`}>
+                                                                <input type="checkbox" checked={batchTargets.has(name)} onChange={() => setBatchTargets(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n; })} className="w-4 h-4" />
+                                                                <span className="truncate">{name}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                                <div className="flex gap-3 pt-3 mt-1 border-t">
+                                    <button type="button" onClick={() => setShowBatchGenModal(false)} className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50">取消</button>
+                                    <button type="button" onClick={handleBatchGenerate} className="flex-[2] py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black shadow-lg">⚡ 一鍵生成 {batchTargets.size} 筆紀錄</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {showPersonnelModal && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-fade-in">
