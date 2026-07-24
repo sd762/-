@@ -134,18 +134,29 @@
         ];
 
         // --- 本地儲存管理 ---
+        // 雲端（Supabase）才是資料的正本，這裡的 localStorage 只是離線快取。
+        // 快取寫入失敗（例如容量爆掉）不應該讓整個 App 掛掉，所以一律吞掉錯誤。
+        const safeSetItem = (key, value) => {
+            try {
+                localStorage.setItem(key, value);
+                return true;
+            } catch (e) {
+                console.warn(`本地快取寫入失敗（${key}），已略過，不影響雲端資料：`, e);
+                return false;
+            }
+        };
         const Storage = {
-            saveRecords: (data) => localStorage.setItem('audit_records_v1', JSON.stringify(data)),
+            saveRecords: (data) => safeSetItem('audit_records_v1', JSON.stringify(data)),
             getRecords: () => JSON.parse(localStorage.getItem('audit_records_v1') || '[]'),
-            saveTemplates: (data) => localStorage.setItem('audit_templates_v3', JSON.stringify(data)),
+            saveTemplates: (data) => safeSetItem('audit_templates_v3', JSON.stringify(data)),
             getTemplates: () => {
                 let tpls = localStorage.getItem('audit_templates_v3');
                 if (!tpls) tpls = localStorage.getItem('audit_templates_v2');
                 return JSON.parse(tpls || '[]');
             },
-            saveSettings: (data) => localStorage.setItem('audit_settings_v1', JSON.stringify(data)),
+            saveSettings: (data) => safeSetItem('audit_settings_v1', JSON.stringify(data)),
             getSettings: () => JSON.parse(localStorage.getItem('audit_settings_v1') || '{}'),
-            savePersonnel: (data) => localStorage.setItem('audit_personnel_v1', JSON.stringify(data)),
+            savePersonnel: (data) => safeSetItem('audit_personnel_v1', JSON.stringify(data)),
             getPersonnel: () => JSON.parse(localStorage.getItem('audit_personnel_v1') || '{}')
         };
 
