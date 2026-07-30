@@ -6,3 +6,6 @@ __pycache__/
 *.exe
 *.pkg
 *.pyc
+
+# 雲端備份含受測者姓名等個資，本 repo 為公開，絕對不可提交
+backups/
