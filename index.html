@@ -1851,8 +1851,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
 
 
             const availableYears = useMemo(() => {
-                const years = [...new Set(records.map(r => String(r.date).substring(0, 4)))].filter(y => y.length === 4).sort().reverse();
-                return years.length > 0 ? years : [new Date().getFullYear().toString()];
+                const currentYear = new Date().getFullYear();
+                const years = [...new Set(records.map(r => String(r.date).substring(0, 4)))]
+                    .filter(y => y.length === 4 && parseInt(y) <= currentYear + 1)
+                    .sort().reverse();
+                return years.length > 0 ? years : [currentYear.toString()];
             }, [records]);
             const [selectedYear, setSelectedYear] = useState(availableYears[0] || new Date().getFullYear().toString());
 
@@ -1968,7 +1971,8 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                             const dk = `${String(d.unit || '').trim()}__${(d.date || '').substring(0, 7)}__${d.auditName || ''}__${String(d.target || '').trim()}`;
                             if (dk !== '__') cloudDedupKeys.add(dk);
                         });
-                        setRecords(recs.map(r => {
+                        const currentYear = new Date().getFullYear();
+                        const mappedRecs = recs.map(r => {
                             const data = typeof r.audit_content === 'string' ? JSON.parse(r.audit_content) : (r.audit_content || {});
                             return {
                                 id: r.id,
@@ -1987,7 +1991,13 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                 technique: data.technique || r.technique || '',
                                 checklist: data.checklist || r.checklist || []
                             };
-                        }));
+                        }).filter(r => {
+                            const y = parseInt(String(r.date).substring(0, 4));
+                            return !isNaN(y) && y <= currentYear + 1;
+                        });
+
+                        setRecords(mappedRecs);
+                        Storage.saveRecords(mappedRecs);
                     
 
                     // 2. \u8b80\u53d6\u984c\u5eab
@@ -2140,7 +2150,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         // ── 自動遷移 1：稽核紀錄 ──
                         const localRecs = Storage.getRecords();
                         if (localRecs && localRecs.length > 0) {
+                            const currentYear = new Date().getFullYear();
                             const missing = localRecs.filter(r => {
+                            if (!r.date) return false;
+                            const y = parseInt(String(r.date).substring(0, 4));
+                            if (isNaN(y) || y > currentYear + 1) return false; // 絕對不上傳未來異常年份
                             // 一般機構帳號只上傳自己機構的紀錄；雲端已改為只抓自己機構，若不擋會把 localStorage 殘留的他機構資料用錯誤 user_id 重新上傳。
                             if (!canViewAll && userUnit && String(r.unit || '').trim() !== String(userUnit || '').trim()) return false;
                             if (cloudIds.has(String(r.id))) return false;
