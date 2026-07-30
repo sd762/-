@@ -1948,9 +1948,10 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 try {
                     // 1. \u8b80\u53d6\u7a3d\u6838\u7d00\u9304
                     // 1. 讀取稽核紀錄 (後端不帶過濾條件，由前端處理，避免編碼不一致)
-                    const recSvcKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
-                    const recSvcHdrs = { 'apikey': recSvcKey, 'Authorization': 'Bearer ' + recSvcKey, 'Content-Type': 'application/json' };
+                    // 以登入者自己的權杖讀取；能看到哪些資料由後端 RLS 決定（依 app_metadata.unit 判斷）。
+                    const recSvcHdrs = headers;
                     // 效能優化：一般機構帳號只抓「自己機構」的資料，載入量不受全系統總量影響；管理員/生福課維持抓全部。
+                    // 註：這只是減少傳輸量，真正的權限邊界在 RLS，前端過濾被繞過也拿不到別機構的資料。
                     const recUnitFilter = (!sessCanViewAll && sessUnit) ? ('&audit_content->>unit=eq.' + encodeURIComponent(sessUnit)) : '';
                     // 分頁讀取：PostgREST 單次回傳有 max-rows 上限（約 1000 筆），必須用 offset 累加把所有資料抓回，否則超過上限的單位資料會「消失」。
                     let recs = [];
@@ -2085,11 +2086,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             const syncPersonnelToCloud = async (data, currentSession) => {
                 const sess = currentSession || session;
                 if (!sess) return;
-                // 使用具有管理權限的 Key 繞過 RLS，以允許一般使用者更新共用名單
-                const syncKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
+                // 以登入者自己的權杖同步。RLS 已允許機構帳號讀寫「自己機構」的名單，
+                // 因此同機構的不同帳號仍能共用同一份名單，不需要繞過 RLS。
                 const headers = {
-                    'apikey': syncKey,
-                    'Authorization': `Bearer ${syncKey}`,
+                    'apikey': supabaseKey,
+                    'Authorization': `Bearer ${sess.access_token}`,
                     'Content-Type': 'application/json',
                     'Prefer': 'return=minimal'
                 };
@@ -2693,7 +2694,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             // 將刪除動作寫入稽核軌跡（deletion_logs），每刪一筆紀錄記一列，方便依機構查核
             const logDeletion = async (recs, actionType) => {
                 if (!recs || recs.length === 0) return;
-                const logKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
+                if (!session) return;
                 const rows = recs.map(r => ({
                     operator_email: session?.user?.email || '未登入',
                     action_type: actionType,
@@ -2707,18 +2708,19 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 try {
                     await fetch(`${supabaseUrl}/rest/v1/deletion_logs`, {
                         method: 'POST',
-                        headers: { 'apikey': logKey, 'Authorization': 'Bearer ' + logKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                        headers: { 'apikey': supabaseKey, 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
                         body: JSON.stringify(rows)
                     });
                 } catch (e) { console.error('刪除軌跡寫入失敗:', e); }
             };
 
-            // 用 service_role 刪除雲端紀錄，繞過 RLS。因為部分紀錄的 user_id 可能與登入者不同（早期匯入或他帳號建立），
-            // 若用一般身分刪除會被 RLS 靜默擋下，造成「刪不掉、重整又出現」。畫面只會顯示自己機構的資料，且刪除都有寫入軌跡。
+            // 以登入者自己的權杖刪除。RLS 的刪除政策是以「機構」為準而非 user_id，
+            // 因此早期匯入或他帳號建立的紀錄（user_id 與登入者不符）同樣刪得掉，
+            // 不會再發生「刪不掉、重整又出現」。所有刪除都會寫入 deletion_logs 軌跡。
             const deleteRecordsFromCloud = async (ids) => {
                 if (!ids || ids.length === 0) return;
-                const delKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtoa3Zxa2Jzc25nY2xvanR4a3V2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODAyMTgwOSwiZXhwIjoyMDkzNTk3ODA5fQ._kgSuOGrqQWgPQcrn0kl9pDWcWCPKyZVGfYyDQa3D0g';
-                const headers = { 'apikey': delKey, 'Authorization': 'Bearer ' + delKey, 'Content-Type': 'application/json' };
+                if (!session) return;
+                const headers = { 'apikey': supabaseKey, 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' };
                 for (let i = 0; i < ids.length; i += 100) {
                     const chunk = ids.slice(i, i + 100);
                     try {
