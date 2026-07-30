@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 
 <head>
@@ -1856,6 +1856,12 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             }, [records]);
             const [selectedYear, setSelectedYear] = useState(availableYears[0] || new Date().getFullYear().toString());
 
+            useEffect(() => {
+                if (availableYears.length > 0 && !availableYears.includes(selectedYear)) {
+                    setSelectedYear(availableYears[0]);
+                }
+            }, [availableYears, selectedYear]);
+
             const [customUnits, setCustomUnits] = useState(() => {
                 try { return JSON.parse(localStorage.getItem('custom_units_list') || '[]'); } catch (e) { return []; }
             });
@@ -2720,7 +2726,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         await deleteRecordsFromCloud(idsToDelete);
                     }
 
-                    setRecords(prev => prev.filter(r => !selectedIds.has(r.id)));
+                    setRecords(prev => {
+                        const next = prev.filter(r => !selectedIds.has(r.id));
+                        Storage.saveRecords(next);
+                        return next;
+                    });
                     setSelectedIds(new Set());
                 });
             };
@@ -2732,7 +2742,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         if (rec) await logDeletion([rec], '單筆刪除');
                         await deleteRecordsFromCloud([id]);
                     }
-                    setRecords(prev => prev.filter(x => x.id !== id));
+                    setRecords(prev => {
+                        const next = prev.filter(x => x.id !== id);
+                        Storage.saveRecords(next);
+                        return next;
+                    });
                 });
             };
 
@@ -3416,7 +3430,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
 
             // 共用：把一筆紀錄同步寫入雲端（單筆送出、批次快速建檔皆呼叫此函式，避免邏輯分岔）
             const saveRecordToCloud = async (rec, templateId) => {
-                if (!session) return;
+                if (!session) return rec.id;
                 try {
                     const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
                         method: 'POST',
@@ -3424,7 +3438,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                             'apikey': 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67',
                             'Authorization': `Bearer ${session.access_token}`,
                             'Content-Type': 'application/json',
-                            'Prefer': 'return=minimal'
+                            'Prefer': 'return=representation'
                         },
                         body: JSON.stringify({
                             audit_content: {
@@ -3446,13 +3460,21 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                             user_id: session.user.id
                         })
                     });
-                    if (!res.ok) {
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (Array.isArray(data) && data[0] && data[0].id) {
+                            const cloudRealId = data[0].id;
+                            setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, id: cloudRealId } : r));
+                            return cloudRealId;
+                        }
+                    } else {
                         const errText = await res.text();
                         console.error('同步至雲端失敗:', res.status, errText);
                     }
                 } catch (err) {
                     console.error('雲端存檔錯誤:', err);
                 }
+                return rec.id;
             };
 
             const handleSubmit = async (e) => {
