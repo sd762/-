@@ -1,0 +1,14 @@
+{
+  "name": "qingfu-audit-datastore",
+  "private": true,
+  "version": "0.1.0",
+  "description": "dataStore module and tests for 清福技術考稽核系統. index.html itself stays build-free — this only supports dataStore.js and its Vitest suite.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}

@@ -92,6 +92,9 @@
 </head>
 
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
+    <!-- type="module" 會在 DOMContentLoaded 之前執行完畢，確保下方 text/babel
+         腳本開始執行時 window.createDataStore 已經存在。 -->
+    <script type="module" src="dataStore.js"></script>
     <div id="root">
         <div class="flex flex-col items-center justify-center min-h-screen text-slate-400">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
@@ -145,19 +148,38 @@
                 return false;
             }
         };
+        // 讀取一律包 try/catch：快取內容損毀（例如寫到一半被中斷）不該讓
+        // useState 初始化直接拋出例外，導致整個 App 在第一次 render 就掛掉、
+        // 使用者只看到一片空白、只能找人清瀏覽器快取。壞掉就當作沒有快取。
+        const safeGetItem = (key, fallback) => {
+            let raw;
+            try {
+                raw = localStorage.getItem(key);
+            } catch (e) {
+                console.warn(`本地快取讀取失敗（${key}），視為無快取：`, e);
+                return fallback;
+            }
+            if (raw == null) return fallback;
+            try {
+                return JSON.parse(raw);
+            } catch (e) {
+                console.warn(`本地快取內容損毀（${key}），視為無快取：`, e);
+                return fallback;
+            }
+        };
         const Storage = {
             saveRecords: (data) => safeSetItem('audit_records_v1', JSON.stringify(data)),
-            getRecords: () => JSON.parse(localStorage.getItem('audit_records_v1') || '[]'),
+            getRecords: () => safeGetItem('audit_records_v1', []),
             saveTemplates: (data) => safeSetItem('audit_templates_v3', JSON.stringify(data)),
             getTemplates: () => {
-                let tpls = localStorage.getItem('audit_templates_v3');
-                if (!tpls) tpls = localStorage.getItem('audit_templates_v2');
-                return JSON.parse(tpls || '[]');
+                const v3 = safeGetItem('audit_templates_v3', null);
+                if (v3 !== null) return v3;
+                return safeGetItem('audit_templates_v2', []);
             },
             saveSettings: (data) => safeSetItem('audit_settings_v1', JSON.stringify(data)),
-            getSettings: () => JSON.parse(localStorage.getItem('audit_settings_v1') || '{}'),
+            getSettings: () => safeGetItem('audit_settings_v1', {}),
             savePersonnel: (data) => safeSetItem('audit_personnel_v1', JSON.stringify(data)),
-            getPersonnel: () => JSON.parse(localStorage.getItem('audit_personnel_v1') || '{}')
+            getPersonnel: () => safeGetItem('audit_personnel_v1', {})
         };
 
         // --- Supabase 初始化 ---
@@ -1775,6 +1797,19 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             const [filterTplMainCat, setFilterTplMainCat] = useState('照護品質類技術考');
             const [filterTplSubCat, setFilterTplSubCat] = useState('護理照服類');
 
+            // dataStore 需要「當下」的 session 而非建立當時的閉包值（token 每小時
+            // 自動更新，session 物件會變成新的實體），因此用 ref 保持最新值。
+            const sessionRef = React.useRef(session);
+            useEffect(() => { sessionRef.current = session; }, [session]);
+            const dataStore = useMemo(() => window.createDataStore({
+                fetch: window.fetch.bind(window),
+                storage: window.localStorage,
+                supabaseUrl,
+                supabaseKey,
+                getAccessToken: () => sessionRef.current?.access_token || null,
+                getUserId: () => sessionRef.current?.user?.id || null
+            }), []);
+
             useEffect(() => {
                 let isMounted = true;
 
@@ -2714,20 +2749,34 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 } catch (e) { console.error('刪除軌跡寫入失敗:', e); }
             };
 
-            // 以登入者自己的權杖刪除。RLS 的刪除政策是以「機構」為準而非 user_id，
-            // 因此早期匯入或他帳號建立的紀錄（user_id 與登入者不符）同樣刪得掉，
-            // 不會再發生「刪不掉、重整又出現」。所有刪除都會寫入 deletion_logs 軌跡。
+            // 以登入者自己的權杖逐筆刪除。RLS 的刪除政策是以「機構」為準而非
+            // user_id，因此早期匯入或他帳號建立的紀錄同樣刪得掉。所有刪除都會
+            // 寫入 deletion_logs 軌跡。
+            //
+            // 回傳每一筆的實際成敗（succeededIds / failed），呼叫端只能對
+            // succeededIds 做畫面上的移除——這是「刪除失敗卻從畫面消失，
+            // 重整又出現」問題的修法：以前這裡不檢查結果，UI 一律移除。
             const deleteRecordsFromCloud = async (ids) => {
-                if (!ids || ids.length === 0) return;
-                if (!session) return;
-                const headers = { 'apikey': supabaseKey, 'Authorization': 'Bearer ' + session.access_token, 'Content-Type': 'application/json' };
-                for (let i = 0; i < ids.length; i += 100) {
-                    const chunk = ids.slice(i, i + 100);
-                    try {
-                        const res = await fetch(`${supabaseUrl}/rest/v1/audit_records?id=in.(${chunk.map(id => encodeURIComponent(id)).join(',')})`, { method: 'DELETE', headers });
-                        if (!res.ok) console.error('雲端刪除失敗:', res.status, await res.text());
-                    } catch (err) { console.error('雲端刪除錯誤:', err); }
+                if (!ids || ids.length === 0) return { succeededIds: [], failed: [] };
+
+                const succeededIds = [];
+                const failed = [];
+                for (const id of ids) {
+                    // pending: 開頭是本機草稿的假 id，從未送上雲端，刪除只是
+                    // 本機操作；拿去對雲端發 DELETE 只會被拒絕，永遠刪不掉。
+                    if (String(id).startsWith('pending:')) {
+                        const localId = String(id).slice('pending:'.length);
+                        const result = dataStore.records.discardPending(localId);
+                        if (result.ok) succeededIds.push(id);
+                        else failed.push({ id, message: result.error.message });
+                        continue;
+                    }
+                    if (!session) { failed.push({ id, message: '尚未登入' }); continue; }
+                    const result = await dataStore.records.deleteRecord(id);
+                    if (result.ok) succeededIds.push(id);
+                    else failed.push({ id, message: result.error.message });
                 }
+                return { succeededIds, failed };
             };
 
             const handleBatchDelete = async () => {
@@ -2736,27 +2785,33 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     const idsToDelete = Array.from(selectedIds);
                     const recsToDelete = records.filter(r => selectedIds.has(r.id));
 
-                    // 如果已登入，同步刪除雲端資料
-                    if (session) {
-                        await logDeletion(recsToDelete, '批次刪除');
-                        await deleteRecordsFromCloud(idsToDelete);
-                    }
+                    if (session) await logDeletion(recsToDelete, '批次刪除');
+                    const { succeededIds, failed } = await deleteRecordsFromCloud(idsToDelete);
 
-                    setRecords(prev => {
-                        const next = prev.filter(r => !selectedIds.has(r.id));
-                        Storage.saveRecords(next);
-                        return next;
-                    });
+                    if (succeededIds.length > 0) {
+                        setRecords(prev => {
+                            const next = prev.filter(r => !succeededIds.includes(r.id));
+                            Storage.saveRecords(next);
+                            return next;
+                        });
+                    }
                     setSelectedIds(new Set());
+
+                    if (failed.length > 0) {
+                        showAlert(`⚠️ ${succeededIds.length} 筆刪除成功，但有 ${failed.length} 筆失敗（原因：${failed[0].message}），已保留在清單上，請稍後重試。`, '⚠️ 部分刪除失敗');
+                    }
                 });
             };
 
             const handleDeleteSingle = async (id) => {
                 showConfirm('確定要刪除這筆資料？', async () => {
-                    if (session) {
-                        const rec = records.find(x => x.id === id);
-                        if (rec) await logDeletion([rec], '單筆刪除');
-                        await deleteRecordsFromCloud([id]);
+                    const rec = records.find(x => x.id === id);
+                    if (session && rec) await logDeletion([rec], '單筆刪除');
+                    const { succeededIds, failed } = await deleteRecordsFromCloud([id]);
+
+                    if (succeededIds.length === 0) {
+                        showAlert(`❌ 刪除失敗：${failed[0]?.message || '未知錯誤'}\n這筆紀錄仍保留在清單上，請確認網路後重試。`, '❌ 刪除失敗');
+                        return;
                     }
                     setRecords(prev => {
                         const next = prev.filter(x => x.id !== id);
@@ -2791,14 +2846,18 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         }
 
                         const recsToDelete = records.filter(r => toDelete.includes(r.id));
-                        setRecords(prev => prev.filter(r => !toDelete.includes(r.id)));
+                        if (session) await logDeletion(recsToDelete, '清除重複');
+                        const { succeededIds, failed } = await deleteRecordsFromCloud(toDelete);
 
-                        if (session) {
-                            await logDeletion(recsToDelete, '清除重複');
-                            await deleteRecordsFromCloud(toDelete);
+                        if (succeededIds.length > 0) {
+                            setRecords(prev => prev.filter(r => !succeededIds.includes(r.id)));
                         }
 
-                        showAlert(`✅ 清除完成！共刪除 ${toDelete.length} 筆重複紀錄，每組均保留最完整的一筆。`);
+                        if (failed.length > 0) {
+                            showAlert(`⚠️ ${succeededIds.length} 筆清除成功，但有 ${failed.length} 筆刪除失敗（原因：${failed[0].message}），已保留在清單上，請稍後重試。`, '⚠️ 部分清除失敗');
+                        } else {
+                            showAlert(`✅ 清除完成！共刪除 ${succeededIds.length} 筆重複紀錄，每組均保留最完整的一筆。`);
+                        }
                     },
                     '⚠️ 清除重複紀錄'
                 );
@@ -3519,17 +3578,38 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     ...formData,
                     auditName: finalAuditName,
                     id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                    templateId: currentTemplateId,
                     checklist
                 };
 
-                // 更新本地狀態
-                setRecords(prev => [newRec, ...prev]);
-                await saveRecordToCloud(newRec, currentTemplateId);
+                // 先送出、確認結果後才更新畫面與提示——不再像過去那樣不管
+                // 雲端是否真的寫入成功都顯示「已儲存」。
+                const result = await dataStore.records.create(newRec);
+
+                if (result.ok) {
+                    const savedRec = result.data.pending
+                        ? { ...newRec, id: `pending:${result.data.localId}`, _pending: true }
+                        : { ...newRec, id: result.data.id, _pending: false };
+                    setRecords(prev => [savedRec, ...prev]);
+                    showAlert(
+                        result.data.pending ? '⚠️ 目前離線，紀錄已暫存在本機，恢復連線後請至記錄庫重新送出。' : '💾 紀錄已儲存！',
+                        result.data.pending ? '📴 尚未同步' : undefined
+                    );
+                } else if (result.error.localId) {
+                    // 雲端寫入失敗，但已存成本機草稿，資料沒有遺失，
+                    // 仍要顯示在畫面上並標示未同步，讓使用者知道要重試。
+                    setRecords(prev => [{ ...newRec, id: `pending:${result.error.localId}`, _pending: true }, ...prev]);
+                    showAlert(`⚠️ 雲端儲存失敗（${result.error.message}），已暫存本機，請確認網路後至記錄庫重新送出。`, '📴 尚未同步');
+                } else {
+                    // 連本機草稿都存不進去（例如瀏覽器儲存空間已滿），這才是
+                    // 真正「什麼都沒存到」的情況，不清空表單讓使用者能重試。
+                    showAlert(`❌ 儲存失敗：${result.error.message}\n請確認瀏覽器儲存空間是否已滿，或重新整理後再試一次。`, '❌ 儲存失敗');
+                    return;
+                }
 
                 setFormData(p => ({ ...p, target: '', jobTitle: '', score: '', score2: '', notes: '' }));
                 if (formData.isDual) setChecklist(checklist.map(i => ({ ...i, comp: null, acc: null, note: '' })));
                 else setChecklist(checklist.map(i => ({ ...i, score: i.maxScore, note: '', mode: 'full' })));
-                showAlert('💾 紀錄已儲存！');
             };
 
             // 批次快速建檔：一次選多人、同項目同日期，各人分數在指定範圍內隨機生成
@@ -4274,7 +4354,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                                     <option value="其他" />
                                                 </datalist>
                                             </div>
-                                            <div className="md:col-span-1 relative">
+                                            <div className="md:col-span-2 relative">
                                                 <label className="text-[10px] font-bold text-slate-400 uppercase">受測對象</label>
                                                 <div className="flex gap-1">
                                                     <div className="relative w-full">

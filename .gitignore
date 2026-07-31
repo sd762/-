@@ -9,3 +9,6 @@ __pycache__/
 
 # 雲端備份含受測者姓名等個資，本 repo 為公開，絕對不可提交
 backups/
+
+# dataStore 測試環境（僅供 npm test 用，index.html 本身仍免編譯部署）
+node_modules/
