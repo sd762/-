@@ -2117,59 +2117,6 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 return { cloudIds, cloudDedupKeys };
             };
 
-            // 將 personnelData 完整同步至 Supabase（以機構為單位：刪除該機構舊資料後重新插入）
-            const syncPersonnelToCloud = async (data, currentSession) => {
-                const sess = currentSession || session;
-                if (!sess) return;
-                // 以登入者自己的權杖同步。RLS 已允許機構帳號讀寫「自己機構」的名單，
-                // 因此同機構的不同帳號仍能共用同一份名單，不需要繞過 RLS。
-                const headers = {
-                    'apikey': supabaseKey,
-                    'Authorization': `Bearer ${sess.access_token}`,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'return=minimal'
-                };
-                try {
-                    // 以機構(unit)為單位同步，而非個人帳號。
-                    // 先取得本次要寫入的所有機構清單
-                    const unitsToSync = Object.keys(data);
-                    if (unitsToSync.length === 0) return;
-
-                    // 逐機構刪除舊資料並重新插入
-                    for (const unit of unitsToSync) {
-                        const encodedUnit = encodeURIComponent(unit);
-                        // 刪除該機構的所有舊名單（不限帳號，確保同機構資料統一）
-                        await fetch(`${supabaseUrl}/rest/v1/audit_personnel?unit=eq.${encodedUnit}`, {
-                            method: 'DELETE', headers
-                        });
-
-                        // 插入新資料（移除 user_id）
-                        const rows = [];
-                        const cats = data[unit] || {};
-                        Object.entries(cats).forEach(([cat, names]) => {
-                            (names || []).forEach(name => {
-                                if (name && name.trim()) {
-                                    rows.push({ unit, category: cat, name: name.trim() });
-                                }
-                            });
-                        });
-                        if (rows.length > 0) {
-                            const res = await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
-                                method: 'POST', headers, body: JSON.stringify(rows)
-                            });
-                            if (!res.ok) {
-                                const errText = await res.text();
-                                console.error(`[${unit}] 人員同步失敗:`, res.status, errText);
-                            } else {
-                                console.log(`[${unit}] 人員名單已同步，共 ${rows.length} 筆。`);
-                            }
-                        }
-                    }
-                } catch (err) {
-                    console.error('人員名單雲端同步失敗:', err);
-                }
-            };
-
             useEffect(() => {
                 if (session) {
                     loadAllDataFromCloud(session).then(async (result) => {
@@ -2228,25 +2175,13 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                 console.log('稽核紀錄雲端已是最新，無需遷移。');
                             }
                         }
-
-                        // ── 自動遷移 2：人員名單（雲端若無資料才上傳本地）──
-                        const checkPerRes = await fetch(
-                            `${supabaseUrl}/rest/v1/audit_personnel?select=id&limit=1`,
-                            { headers }
-                        );
-                        if (checkPerRes.ok) {
-                            const cloudPer = await checkPerRes.json();
-                            if (cloudPer.length === 0) {
-                                // 雲端完全空白，把 localStorage 的名單推上去
-                                const localPer = Storage.getPersonnel();
-                                const hasLocal = localPer && Object.keys(localPer).length > 0;
-                                if (hasLocal) {
-                                    console.log('雲端人員名單為空，正在遷移本地名單...');
-                                    await syncPersonnelToCloud(localPer, session);
-                                    console.log('人員名單遷移完成。');
-                                }
-                            }
-                        }
+                        // 人員名單的自動遷移機制已移除：這裡原本會用「目前登入者
+                        // 自己視角查到 0 筆」來判斷「雲端整個資料庫是空的」，但
+                        // RLS 只讓每個帳號看到自己機構的名單，個人視角的空結果
+                        // 不能代表全域真的沒有資料。實測發現一般機構帳號登入時
+                        // 會誤判、把 localStorage 殘留的全部機構快取一次推上雲端，
+                        // 撞上其他機構既有資料觸發大量 409 衝突。新機構要建立
+                        // 初始名單，請用 admin_tools.ps1 手動處理。
                     });
                 }
             }, [session]);
@@ -2254,12 +2189,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             useEffect(() => { Storage.saveRecords(records); }, [records]);
             useEffect(() => { Storage.saveTemplates(templates); }, [templates]);
             useEffect(() => { Storage.saveSettings(reportSettings); }, [reportSettings]);
+            // 只負責寫本機快取，不再對雲端做整批同步——雲端同步改成每次新增/
+            // 刪除時各自呼叫 dataStore.personnel.upsert/remove，只影響那一筆，
+            // 不會再有「先刪整個機構再重插」失敗一半就讓名單消失的風險。
             useEffect(() => {
                 Storage.savePersonnel(personnelData);
-                // 僅在初次雲端載入完成後才觸發寫回，避免登入時用本地舊資料覆蓋雲端
-                if (session && personnelSyncedRef.current) {
-                    syncPersonnelToCloud(personnelData);
-                }
             }, [personnelData]);
 
             useEffect(() => {
@@ -2296,56 +2230,92 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 const unitData = personnelData[formData.unit] || { '護理類': [], '照服類': [], '行政類': [] };
                 const allNamesInUnit = Object.values(unitData).flat();
 
-                if (allNamesInUnit.includes(name)) {
-                    showConfirm(`機構內已有名為「${name}」的人員。是否要重複新增並自動編號？`, () => {
-                        const uniqueName = getUniqueName(unitData, name);
-                        setPersonnelData(prev => {
-                            const uData = prev[formData.unit] || { '護理類': [], '照服類': [], '行政類': [] };
-                            const newCat = uData[cat] ? [...uData[cat]] : [];
-                            newCat.push(uniqueName);
-                            return { ...prev, [formData.unit]: { ...uData, [cat]: newCat } };
-                        });
-                        document.getElementById('newPersonName').value = '';
-                        showAlert(`已新增為：${uniqueName}`);
-                    });
-                } else {
+                // 先更新畫面（即時回饋），再同步雲端；若雲端失敗就把這筆從畫面
+                // 移除並告知原因，不留下「畫面說有、雲端其實沒有」的落差。
+                const addOne = async (finalName) => {
+                    const unit = formData.unit;
                     setPersonnelData(prev => {
-                        const uData = prev[formData.unit] || { '護理類': [], '照服類': [], '行政類': [] };
-                        const newCat = uData[cat] ? [...uData[cat]] : [];
-                        newCat.push(name);
-                        return { ...prev, [formData.unit]: { ...uData, [cat]: newCat } };
+                        const uData = prev[unit] || { '護理類': [], '照服類': [], '行政類': [] };
+                        const newCat = uData[cat] ? [...uData[cat], finalName] : [finalName];
+                        return { ...prev, [unit]: { ...uData, [cat]: newCat } };
                     });
                     document.getElementById('newPersonName').value = '';
-                    showAlert(`已將 ${name} 加入 ${cat}`);
+
+                    const result = await dataStore.personnel.upsert({ unit, category: cat, name: finalName });
+                    if (!result.ok) {
+                        setPersonnelData(prev => {
+                            const uData = prev[unit] || {};
+                            const newCat = (uData[cat] || []).filter(n => n !== finalName);
+                            return { ...prev, [unit]: { ...uData, [cat]: newCat } };
+                        });
+                        showAlert(`⚠️ 同步至雲端失敗（${result.error.message}），已從名單移除，請確認網路後重試。`, '❌ 新增失敗');
+                        return;
+                    }
+                    showAlert(`已將 ${finalName} 加入 ${cat}`);
+                };
+
+                if (allNamesInUnit.includes(name)) {
+                    showConfirm(`機構內已有名為「${name}」的人員。是否要重複新增並自動編號？`, () => {
+                        addOne(getUniqueName(unitData, name));
+                    });
+                } else {
+                    addOne(name);
                 }
             };
 
             const handleRemovePersonnel = (cat, name) => {
-                showConfirm(`確定要從 ${cat} 移除 ${name}？`, () => {
+                showConfirm(`確定要從 ${cat} 移除 ${name}？`, async () => {
+                    const unit = formData.unit;
                     setPersonnelData(prev => {
-                        const unitData = prev[formData.unit] || {};
+                        const unitData = prev[unit] || {};
                         const newCat = (unitData[cat] || []).filter(n => n !== name);
-                        return { ...prev, [formData.unit]: { ...unitData, [cat]: newCat } };
+                        return { ...prev, [unit]: { ...unitData, [cat]: newCat } };
                     });
+
+                    const result = await dataStore.personnel.remove({ unit, category: cat, name });
+                    if (!result.ok) {
+                        // 回復：雲端刪除失敗，把這筆加回本機名單。
+                        setPersonnelData(prev => {
+                            const unitData = prev[unit] || {};
+                            const newCat = [...(unitData[cat] || []), name];
+                            return { ...prev, [unit]: { ...unitData, [cat]: newCat } };
+                        });
+                        showAlert(`⚠️ 刪除失敗（${result.error.message}），已回復名單，請重試。`, '❌ 刪除失敗');
+                    }
                 });
             };
 
             const handleBatchRemovePersonnel = () => {
                 if (selectedPersonnelIds.size === 0) return showAlert('請先勾選要刪除的人員！');
-                showConfirm(`確定要刪除選取的 ${selectedPersonnelIds.size} 位人員？`, () => {
+                showConfirm(`確定要刪除選取的 ${selectedPersonnelIds.size} 位人員？`, async () => {
+                    const unit = formData.unit;
+                    const toRemove = Array.from(selectedPersonnelIds).map(id => id.split('|'));
+
                     setPersonnelData(prev => {
-                        const newData = { ...prev };
-                        const unitData = newData[formData.unit] || {};
-                        const toRemove = Array.from(selectedPersonnelIds).map(id => id.split('|'));
+                        const unitData = { ...(prev[unit] || {}) };
                         toRemove.forEach(([cat, name]) => {
-                            if (unitData[cat]) {
-                                unitData[cat] = unitData[cat].filter(n => n !== name);
-                            }
+                            if (unitData[cat]) unitData[cat] = unitData[cat].filter(n => n !== name);
                         });
-                        newData[formData.unit] = unitData;
-                        return newData;
+                        return { ...prev, [unit]: unitData };
                     });
                     setSelectedPersonnelIds(new Set());
+
+                    const failed = [];
+                    for (const [cat, name] of toRemove) {
+                        const result = await dataStore.personnel.remove({ unit, category: cat, name });
+                        if (!result.ok) failed.push({ cat, name, message: result.error.message });
+                    }
+
+                    if (failed.length > 0) {
+                        setPersonnelData(prev => {
+                            const unitData = { ...(prev[unit] || {}) };
+                            failed.forEach(({ cat, name }) => {
+                                unitData[cat] = [...(unitData[cat] || []), name];
+                            });
+                            return { ...prev, [unit]: unitData };
+                        });
+                        showAlert(`⚠️ ${toRemove.length - failed.length} 位刪除成功，但有 ${failed.length} 位失敗（原因：${failed[0].message}），已保留在名單上。`, '⚠️ 部分刪除失敗');
+                    }
                 });
             };
 
@@ -2691,9 +2661,9 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             });
 
             const renderRecordRow = (r, padClass) => (
-                <tr key={r.id} className={`hover:bg-blue-50/40 transition-colors ${selectedIds.has(r.id) ? 'bg-blue-50/60' : ''}`}>
+                <tr key={r.id} className={`hover:bg-blue-50/40 transition-colors ${selectedIds.has(r.id) ? 'bg-blue-50/60' : ''} ${r._pending ? 'bg-amber-50/60' : ''}`}>
                     <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => handleToggleSelect(r.id)} className="w-4 h-4 cursor-pointer" /></td>
-                    <td className={`p-3 text-slate-500 ${padClass || 'pl-24'}`}>{r.date}</td><td className="p-3 font-black text-primary">{r.target} {r.jobTitle && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded ml-1 font-normal">{r.jobTitle}</span>}</td><td className="p-3 text-slate-600 truncate max-w-[150px]">{r.auditName}</td>
+                    <td className={`p-3 text-slate-500 ${padClass || 'pl-24'}`}>{r.date}</td><td className="p-3 font-black text-primary">{r.target} {r.jobTitle && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 py-0.5 rounded ml-1 font-normal">{r.jobTitle}</span>} {r._pending && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded ml-1 font-bold">📴 尚未同步</span>}</td><td className="p-3 text-slate-600 truncate max-w-[150px]">{r.auditName}</td>
                     <td className="p-3 text-center">
                         {r.isDual ? (
                             <span className="inline-flex gap-1 text-[10px] font-black"><span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">遵:{r.score}%</span><span className="bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded">正:{r.score2}%</span></span>
@@ -2701,7 +2671,10 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                             <span className={`inline-block px-2 py-1 rounded-full font-black ${r.score < 80 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>{r.score}</span>
                         )}
                     </td>
-                    <td className="p-3 text-center"><button onClick={() => handleDeleteSingle(r.id)} className="text-red-300 hover:text-red-600 transition-colors"><IconTrash /></button></td>
+                    <td className="p-3 text-center">
+                        {r._pending && <button onClick={() => handleRetryPending(r.id)} className="text-amber-500 hover:text-amber-700 transition-colors mr-2 font-bold text-xs" title="重新嘗試上傳">🔄 重試</button>}
+                        <button onClick={() => handleDeleteSingle(r.id)} className="text-red-300 hover:text-red-600 transition-colors"><IconTrash /></button>
+                    </td>
                 </tr>
             );
 
@@ -2819,6 +2792,23 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         return next;
                     });
                 });
+            };
+
+            // 重新嘗試把一筆離線暫存的草稿送上雲端。成功後把畫面上的假 id
+            // （pending:xxx）換成雲端真正的 id，並拿掉「尚未同步」標記。
+            const handleRetryPending = async (pendingId) => {
+                const localId = String(pendingId).slice('pending:'.length);
+                const result = await dataStore.records.retryPending(localId);
+                if (!result.ok) {
+                    showAlert(`⚠️ 仍然無法上傳（${result.error.message}），請確認網路後再試一次。`, '❌ 重試失敗');
+                    return;
+                }
+                setRecords(prev => {
+                    const next = prev.map(r => r.id === pendingId ? { ...result.data, _pending: false } : r);
+                    Storage.saveRecords(next);
+                    return next;
+                });
+                showAlert('💾 已成功上傳至雲端！', '✅ 同步完成');
             };
 
             const handleDeduplicateRecords = () => {
@@ -3503,55 +3493,6 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 setChecklist(nl);
             };
 
-            // 共用：把一筆紀錄同步寫入雲端（單筆送出、批次快速建檔皆呼叫此函式，避免邏輯分岔）
-            const saveRecordToCloud = async (rec, templateId) => {
-                if (!session) return rec.id;
-                try {
-                    const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
-                        method: 'POST',
-                        headers: {
-                            'apikey': 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67',
-                            'Authorization': `Bearer ${session.access_token}`,
-                            'Content-Type': 'application/json',
-                            'Prefer': 'return=representation'
-                        },
-                        body: JSON.stringify({
-                            audit_content: {
-                                date: rec.date,
-                                templateId: templateId,
-                                auditName: rec.auditName,
-                                unitCategory: rec.unitCategory,
-                                unit: String(rec.unit || '').trim(),
-                                target: rec.target,
-                                jobTitle: rec.jobTitle,
-                                auditor: rec.auditor,
-                                score: rec.score,
-                                score2: rec.score2,
-                                notes: rec.notes,
-                                isDual: !!rec.isDual,
-                                technique: rec.technique,
-                                checklist: rec.checklist
-                            },
-                            user_id: session.user.id
-                        })
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (Array.isArray(data) && data[0] && data[0].id) {
-                            const cloudRealId = data[0].id;
-                            setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, id: cloudRealId } : r));
-                            return cloudRealId;
-                        }
-                    } else {
-                        const errText = await res.text();
-                        console.error('同步至雲端失敗:', res.status, errText);
-                    }
-                } catch (err) {
-                    console.error('雲端存檔錯誤:', err);
-                }
-                return rec.id;
-            };
-
             const handleSubmit = async (e) => {
                 e.preventDefault();
                 if (!formData.target) return showAlert('請輸入受測對象姓名！');
@@ -3722,14 +3663,32 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
 
                 if (toCreate.length === 0) return showAlert(`⚠️ 選取的人員本月均已有「${finalAuditName}」紀錄，未產生任何新資料。`);
 
-                setRecords(prev => [...toCreate, ...prev]);
+                // 逐筆送出並依實際結果分類，不再無論成敗都當作全部成功。
+                const succeeded = [];
+                const pendingList = [];
+                const failed = [];
                 for (const rec of toCreate) {
-                    await saveRecordToCloud(rec, currentTemplateId);
+                    rec.templateId = currentTemplateId;
+                    const result = await dataStore.records.create(rec);
+                    if (result.ok) {
+                        if (result.data.pending) pendingList.push({ ...rec, id: `pending:${result.data.localId}`, _pending: true });
+                        else succeeded.push({ ...rec, id: result.data.id, _pending: false });
+                    } else if (result.error.localId) {
+                        pendingList.push({ ...rec, id: `pending:${result.error.localId}`, _pending: true });
+                    } else {
+                        failed.push({ target: rec.target, message: result.error.message });
+                    }
                 }
 
+                setRecords(prev => [...succeeded, ...pendingList, ...prev]);
                 setShowBatchGenModal(false);
                 setBatchTargets(new Set());
-                showAlert(`💾 已產生 ${toCreate.length} 筆紀錄！${skipped.length > 0 ? `\n（${skipped.length} 位本月已有紀錄已跳過：${skipped.join('、')}）` : ''}`);
+
+                let msg = `💾 已產生 ${succeeded.length + pendingList.length} 筆紀錄！`;
+                if (pendingList.length > 0) msg += `\n📴 其中 ${pendingList.length} 筆離線暫存，尚未同步，請至記錄庫重試。`;
+                if (failed.length > 0) msg += `\n❌ ${failed.length} 筆完全失敗（${failed[0].target}：${failed[0].message}），未儲存，請重新產生。`;
+                if (skipped.length > 0) msg += `\n（${skipped.length} 位本月已有紀錄已跳過：${skipped.join('、')}）`;
+                showAlert(msg);
             };
 
             // 產生「匯入範本」：每個考核一張工作表，欄位名稱與匯入程式完全對齊，附範例列與說明頁。
@@ -4021,58 +3980,33 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     if (session) {
                         showAlert('資料解析完成，正在將歷史紀錄同步至雲端...', '⏳ 同步中');
                         try {
-                            const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
-
-                            // 分批上傳，避免 Payload 過大
+                            // 固定分批送出，每批各自回報成敗；不再是「一次巨量請求要嘛
+                            // 全部成功要嘛全部失敗、失敗時無法得知已寫入多少」。
                             const batchSize = 100;
-                            for (let i = 0; i < allImported.length; i += batchSize) {
-                                const chunk = allImported.slice(i, i + batchSize);
-                                const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'apikey': anonKey,
-                                        'Authorization': `Bearer ${session.access_token}`,
-                                        'Content-Type': 'application/json',
-                                        'Prefer': 'return=minimal'
-                                    },
-                                    body: JSON.stringify(chunk.map(r => ({
-                                        // 不傳送 id 欄位，交由 Supabase 自動產生 bigint
-                                        audit_content: {
-                                            date: r.date,
-                                            auditName: r.auditName,
-                                            unitCategory: r.unitCategory || '',
-                                            unit: String(r.unit || '').trim(),
-                                            target: r.target || '',
-                                            jobTitle: r.jobTitle || '',
-                                            auditor: r.auditor || '',
-                                            score: r.score,
-                                            score2: r.score2 || null,
-                                            notes: r.notes || '',
-                                            isDual: !!r.isDual,
-                                            technique: r.technique || '',
-                                            checklist: r.checklist || [],
-                                            templateId: r.templateId || null
-                                        },
-                                        user_id: session.user.id
-                                    })))
-                                });
-                                
-                                if (!res.ok) {
-                                    const errText = await res.text();
-                                    throw new Error(`雲端寫入失敗 (${res.status}): ${errText}`);
-                                }
+                            const results = await dataStore.records.createMany(allImported, batchSize);
+                            let uploaded = 0;
+                            const failedBatches = [];
+                            results.forEach((r, i) => {
+                                const batchLen = Math.min(batchSize, allImported.length - i * batchSize);
+                                if (r.ok) uploaded += batchLen;
+                                else failedBatches.push(r.error.message);
+                            });
+
+                            // 不論成敗都改用「重新讀取雲端」取代整頁重載，避免頁面重載
+                            // 打斷還在傳輸中的批次；也讓畫面誠實反映雲端目前的真實狀態。
+                            await loadAllDataFromCloud(session);
+
+                            if (failedBatches.length === 0) {
+                                let msg = `✅ 成功匯入並上傳 ${uploaded} 筆資料！`;
+                                if (skippedDupCount > 0) msg += `\n⚠️ 已略過 ${skippedDupCount} 筆重複紀錄（同月份、同項目、同受測者）。`;
+                                if (failFiles > 0) msg += `\n⚠️ 有 ${failFiles} 個檔案無法解析。`;
+                                showAlert(msg);
+                            } else {
+                                showAlert(`⚠️ 成功上傳 ${uploaded} 筆，但有 ${failedBatches.length} 批（每批最多 ${batchSize} 筆）失敗（原因：${failedBatches[0]}）。已成功的部分不會遺失，請針對失敗的部分重新匯入。`, '⚠️ 部分匯入失敗');
                             }
-                            
-                            let msg = `✅ 成功匯入並上傳 ${allImported.length} 筆資料！即將重新整理...`;
-                            if (skippedDupCount > 0) msg += `\n⚠️ 已略過 ${skippedDupCount} 筆重複紀錄（同月份、同項目、同受測者）。`;
-                            if (failFiles > 0) msg += `\n⚠️ 有 ${failFiles} 個檔案無法解析。`;
-                            showAlert(msg);
-                            setTimeout(() => window.location.reload(), 2000);
-                            
                         } catch (e) {
                             console.error("上傳歷史資料失敗", e);
                             showAlert(`上傳雲端失敗：${e.message}`, '❌ 錯誤');
-                            setRecords(prev => [...allImported, ...prev]); // 失敗的話退回只寫入本地
                         }
                     } else {
                         setRecords(prev => [...allImported, ...prev]);
@@ -4108,55 +4042,37 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     try {
                         const data = JSON.parse(evt.target.result);
                         if (data.records && Array.isArray(data.records)) {
-                            setRecords(data.records);
                             if (data.reportSettings) setReportSettings(data.reportSettings);
-                            
+
                             if (session) {
                                 showAlert('正在將匯入的歷史資料同步至雲端...', '⏳ 同步中');
-                                const anonKey = 'sb_publishable_iS5FgylfUr-SHIRv2XEQng_JVdEga67';
                                 try {
-                                    const batch = data.records.map(r => ({
-                                        audit_content: {
-                                            date: r.date,
-                                            templateId: r.templateId || null,
-                                            auditName: r.auditName,
-                                            unitCategory: r.unitCategory || '',
-                                            unit: String(r.unit || '').trim(),
-                                            target: r.target || '',
-                                            jobTitle: r.jobTitle || '',
-                                            auditor: r.auditor || '',
-                                            score: r.score,
-                                            score2: r.score2 || null,
-                                            notes: r.notes || '',
-                                            isDual: !!r.isDual,
-                                            technique: r.technique || '',
-                                            checklist: r.checklist || []
-                                        },
-                                        user_id: session.user.id
-                                    }));
-
-                                    const res = await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
-                                        method: 'POST',
-                                        headers: {
-                                            'apikey': anonKey,
-                                            'Authorization': `Bearer ${session.access_token}`,
-                                            'Content-Type': 'application/json',
-                                            'Prefer': 'return=minimal'
-                                        },
-                                        body: JSON.stringify(batch)
+                                    // 分批送出（原本是不分批的單一巨量請求，資料量大時
+                                    // 容易逾時或整批被拒），逐批回報成敗。
+                                    const batchSize = 100;
+                                    const results = await dataStore.records.createMany(data.records, batchSize);
+                                    let uploaded = 0;
+                                    const failedBatches = [];
+                                    results.forEach((r, i) => {
+                                        const batchLen = Math.min(batchSize, data.records.length - i * batchSize);
+                                        if (r.ok) uploaded += batchLen;
+                                        else failedBatches.push(r.error.message);
                                     });
 
-                                    if (res.ok) {
-                                        showAlert('歷史資料已成功匯入並同步至雲端！即將重新整理網頁...', '✅ 搬家完成');
-                                        setTimeout(() => window.location.reload(), 2000);
+                                    // 匯入完成後重新讀取雲端，取代整頁重載，讓畫面反映
+                                    // 真實狀態而不是本地備份檔的內容。
+                                    await loadAllDataFromCloud(session);
+
+                                    if (failedBatches.length === 0) {
+                                        showAlert(`歷史資料已成功匯入並同步至雲端！共 ${uploaded} 筆。`, '✅ 搬家完成');
                                     } else {
-                                        const errText = await res.text();
-                                        showAlert(`雲端同步失敗：${errText}`, '❌ 錯誤');
+                                        showAlert(`⚠️ 成功上傳 ${uploaded} 筆，但有 ${failedBatches.length} 批失敗（原因：${failedBatches[0]}）。已成功的部分不會遺失，請針對失敗的部分重新匯入。`, '⚠️ 部分匯入失敗');
                                     }
                                 } catch (err) {
                                     showAlert(`雲端同步發生例外錯誤：${err.message}`, '❌ 錯誤');
                                 }
                             } else {
+                                setRecords(data.records);
                                 showAlert('資料匯入成功！已還原至本地。(尚未登入，無法同步雲端)', '✅ 搬家完成');
                             }
                         } else {
@@ -4709,7 +4625,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                         <ul className="list-disc pl-8 space-y-1">
                                             <li>點擊「受評者」旁的 <span className="text-blue-600 font-bold">管理名單</span> 按鈕，可依機構分類新增或刪除人員。</li>
                                             <li>**機構內資料共享**：系統會根據您的登入帳號，自動載入您「所屬機構」的專屬名單。</li>
-                                            <li>若您在名單上做了修改，請點擊右上角的 <span className="text-emerald-600 font-bold">☁️ 立即同步</span>，更新後的名單將立刻同步至雲端，同機構的其他護理長重新整理網頁後即可共用此名單。</li>
+                                            <li>新增或刪除人員時會立即同步至雲端，無需額外操作。若要看到同機構其他護理長剛做的修改，點擊右上角的 <span className="text-emerald-600 font-bold">☁️ 重新整理名單</span> 即可。</li>
                                         </ul>
                                         <p><strong>3. 快速打分機制與雙指標：</strong>支援「符合(滿分)、部分(自訂分數)、不符(零分)」快速給分。針對「洗手考評」，支援獨立的洗手時機與雙指標（遵從性/正確性）自動連動邏輯。</p>
                                         <p><strong>4. ⚡ 批次快速建檔 (2.1 新增)：</strong>選好機構與考核項目後，點「受評者」旁的 <span className="text-amber-600 font-bold">⚡ 批次建檔</span> 按鈕，可一次勾選多位人員、設定分數範圍（洗手另設遵從率/正確率範圍），系統會為每人隨機生成範圍內分數並各建一筆紀錄。分數會<b>依考核項目自動分配到各評分細項（洗手則產生各時機明細）</b>，內容與逐項輸入一致，職務也會依名單分類自動帶入；本月已有紀錄者自動跳過，不會重複。</p>
@@ -4845,16 +4761,17 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     </h3>
                                     <div className="flex items-center gap-2">
                                         <button onClick={async () => {
-                                            showAlert('正在同步人員名單至雲端...', '⏳ 同步中');
+                                            // 每次新增/刪除人員時都已個別同步至雲端，這顆按鈕現在的
+                                            // 作用是重新讀取雲端最新狀態（例如同機構其他人剛改過）。
+                                            showAlert('正在讀取雲端最新名單...', '⏳ 讀取中');
                                             try {
-                                                await syncPersonnelToCloud(personnelData, session);
                                                 await loadAllDataFromCloud(session);
-                                                showAlert('人員名單已成功同步至雲端！其他帳號重新整理後即可看到。', '✅ 同步完成');
+                                                showAlert('已更新為雲端最新名單。', '✅ 讀取完成');
                                             } catch (err) {
-                                                showAlert('同步失敗：' + err.message, '❌ 錯誤');
+                                                showAlert('讀取失敗：' + err.message, '❌ 錯誤');
                                             }
                                         }} className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow transition-colors">
-                                            ☁️ 立即同步
+                                            ☁️ 重新整理名單
                                         </button>
                                         <button onClick={() => setShowPersonnelModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
                                     </div>
