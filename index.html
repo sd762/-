@@ -2928,7 +2928,8 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     // 每 3 人一組（帶狀區塊）：橫向並排 3 人（佔 9 欄），排滿就空一列往下開始新的一組。每組都重複「標題三列 + 覆核者列」，方便逐頁列印。
                     for (let g = 0; g < handHygieneTargets.length; g += GROUP_SIZE) {
                         const group = handHygieneTargets.slice(g, g + GROUP_SIZE);
-                        if (g > 0) detailWsData.push([]); // 組間空一列分隔
+                        // 組間不再額外加空列分隔——上一組的「覆核者」列本身已經是滿版
+                        // 合併列，足以充當視覺分隔，多一列空白只會讓換頁容易從中間拆開。
                         const bandTop = detailWsData.length;
                         // 標題三列（每組重複）
                         detailWsData.push([headerText]);
