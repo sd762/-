@@ -285,7 +285,33 @@
         };
 
         // --- 系統後台組件 ---
-        const AdminPanel = ({ handleTemplateUpload, handleExportBackup, handleImportBackup, handleDeduplicateRecords, session }) => {
+        const AdminPanel = ({ handleTemplateUpload, handleExportBackup, handleImportBackup, handleDeduplicateRecords, session, dataStore }) => {
+            // 所有需要 service_role 權限的操作（列出/新增/改機構/重設密碼/改信箱/
+            // 刪除使用者）改由 admin-users Edge Function 代為執行：secret key 只存在
+            // 伺服器端環境變數，瀏覽器只送出自己的登入權杖，函式驗證是管理員身分後
+            // 才代為操作。不再需要在瀏覽器貼任何金鑰——這個分頁本身就已經是只有
+            // 管理員帳號才看得到（見 App 的 {isAdmin && ...} 判斷）。
+            const callAdminFn = async (action, payload) => {
+                const res = await fetch(`${supabaseUrl}/functions/v1/admin-users`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': supabaseKey,
+                        'Authorization': `Bearer ${session.access_token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ action, payload })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `操作失敗（${res.status}）`);
+                return data;
+            };
+
+            // 一般資料表操作（非使用者帳號管理）用登入者自己的權杖即可——RLS 已
+            // 授權管理員（can_view_all()）存取這些表，不需要 service_role。
+            const restHeaders = (extra) => Object.assign(
+                { 'apikey': supabaseKey, 'Authorization': `Bearer ${session.access_token}` }, extra || {}
+            );
+
             const [customUnits, setCustomUnits] = useState([]);
             const [newCustomUnit, setNewCustomUnit] = useState('');
             useEffect(() => {
@@ -305,9 +331,6 @@
                 localStorage.setItem('custom_units_list', JSON.stringify(updated));
             };
 
-            const [serviceKey, setServiceKey] = useState('');
-            const [isAdminAuth, setIsAdminAuth] = useState(false);
-            const [adminClient, setAdminClient] = useState(null);
             const [users, setUsers] = useState([]);
             const [loadingUsers, setLoadingUsers] = useState(false);
             const [error, setError] = useState(null);
@@ -320,56 +343,19 @@
             // Modal for editing unit name
             const [editUnitModal, setEditUnitModal] = useState({ open: false, userId: null, userEmail: '', value: '' });
 
-            const handleUnlock = async (e) => {
-                e.preventDefault();
-                setError(null);
-                setLoadingUsers(true);
-
-                try {
-                    if (!serviceKey || serviceKey.length < 20) {
-                        throw new Error("請輸入有效的 Service Role Key");
-                    }
-
-                    // 直接使用 fetch 測試金鑰是否有效 (獲取用戶列表)
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-                        headers: {
-                            'apikey': serviceKey,
-                            'Authorization': `Bearer ${serviceKey}`
-                        }
-                    });
-
-                    if (!response.ok) {
-                        const errData = await response.json();
-                        throw new Error(errData.msg || errData.error || "金鑰驗證失敗");
-                    }
-
-                    const data = await response.json();
-                    setUsers(data.users || []);
-                    setIsAdminAuth(true);
-                } catch (err) {
-                    console.error("handleUnlock error:", err);
-                    setError('驗證失敗：' + err.message);
-                } finally {
-                    setLoadingUsers(false);
-                }
-            };
-
             const fetchUsers = async () => {
                 setLoadingUsers(true);
+                setError(null);
                 try {
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-                        headers: {
-                            'apikey': serviceKey,
-                            'Authorization': `Bearer ${serviceKey}`
-                        }
-                    });
-                    const data = await response.json();
-                    if (data.users) setUsers(data.users);
+                    const data = await callAdminFn('list');
+                    setUsers(data.users || []);
                 } catch (err) {
-                    setError('更新列表失敗');
+                    setError('讀取使用者列表失敗：' + err.message);
                 }
                 setLoadingUsers(false);
             };
+
+            useEffect(() => { fetchUsers(); }, []);
 
             // 刪除紀錄查察
             const [deletionLogs, setDeletionLogs] = useState([]);
@@ -381,7 +367,7 @@
                 setLogsError(null);
                 try {
                     const res = await fetch(`${supabaseUrl}/rest/v1/deletion_logs?select=*&order=deleted_at.desc&limit=5000`, {
-                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                        headers: restHeaders()
                     });
                     if (!res.ok) {
                         const t = await res.text();
@@ -418,7 +404,7 @@
                 setLoadingTpl(true); setTplMsg('');
                 try {
                     const res = await fetch(`${supabaseUrl}/rest/v1/template_overrides?select=*`, {
-                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                        headers: restHeaders()
                     });
                     const ovMap = {};
                     if (res.ok) { (await res.json()).forEach(o => { ovMap[o.tpl_id] = o; }); }
@@ -461,7 +447,7 @@
                     };
                     const res = await fetch(`${supabaseUrl}/rest/v1/template_overrides`, {
                         method: 'POST',
-                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+                        headers: restHeaders({ 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
                         body: JSON.stringify(body)
                     });
                     if (!res.ok) throw new Error(await res.text());
@@ -476,24 +462,7 @@
                 setError(null);
 
                 try {
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
-                        method: 'POST',
-                        headers: {
-                            'apikey': serviceKey,
-                            'Authorization': `Bearer ${serviceKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            email: newEmail,
-                            password: newPassword,
-                            email_confirm: true,
-                            user_metadata: { unit: newUnit, role: 'user' }
-                        })
-                    });
-
-                    const data = await response.json();
-                    if (!response.ok) throw new Error(data.msg || data.error || "建立失敗");
-
+                    await callAdminFn('create', { email: newEmail, password: newPassword, unit: newUnit });
                     setNewEmail('');
                     setNewPassword('');
                     setNewUnit('');
@@ -505,20 +474,17 @@
             };
 
             const handleDeleteUser = async (userId) => {
-                if (!window.confirm('確定要永久刪除此帳號嗎？\n(注意：系統將一併刪除該帳號所建立的歷史稽核紀錄與人員名單，此動作無法復原！)')) return;
+                if (!window.confirm('確定要永久刪除此帳號嗎？\n(注意：系統將一併刪除該帳號所建立的歷史稽核紀錄，此動作無法復原！)')) return;
                 setError(null);
 
                 try {
-                    const localAdminClient = supabase.createClient(supabaseUrl, serviceKey, {
-                        auth: { autoRefreshToken: false, persistSession: false }
-                    });
-
-                    // 刪除前先把該帳號的稽核紀錄寫入刪除軌跡，方便日後查核
+                    // 刪除前先把該帳號的稽核紀錄寫入刪除軌跡，方便日後查核。用登入者
+                    // 自己的權杖即可——deletion_logs 的 insert 政策對所有登入者開放。
                     try {
                         const delUser = users.find(u => u.id === userId);
                         const delEmail = delUser?.email || userId;
                         const recRes = await fetch(`${supabaseUrl}/rest/v1/audit_records?select=*&user_id=eq.${userId}`, {
-                            headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` }
+                            headers: restHeaders()
                         });
                         if (recRes.ok) {
                             const delRecs = await recRes.json();
@@ -538,30 +504,16 @@
                                 });
                                 await fetch(`${supabaseUrl}/rest/v1/deletion_logs`, {
                                     method: 'POST',
-                                    headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+                                    headers: restHeaders({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
                                     body: JSON.stringify(logRows)
                                 });
                             }
                         }
                     } catch (logErr) { console.warn('刪除帳號軌跡寫入失敗', logErr); }
 
-                    // 直接強制清空關聯資料，避免外鍵限制
-                    const { error: err1 } = await localAdminClient.from('audit_records').delete().eq('user_id', userId);
-                    if (err1) console.warn("刪除稽核紀錄失敗", err1);
-                    const { error: err2 } = await localAdminClient.from('audit_personnel').delete().eq('user_id', userId);
-                    if (err2) console.warn("刪除人員名單失敗", err2);
-
-                    // 改用 REST API 直接呼叫刪除，避免瀏覽器環境被 Supabase JS 阻擋
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-                        method: 'DELETE',
-                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' }
-                    });
-
-                    if (!response.ok) {
-                        const errText = await response.text();
-                        throw new Error(`(${response.status} ${response.statusText}) ${errText}`);
-                    }
-                    
+                    // 帳號本身與其稽核紀錄的刪除交給 Edge Function（需要 service_role）。
+                    // audit_personnel 是以機構共享，不綁個人帳號，不需要在這裡處理。
+                    await callAdminFn('delete', { userId });
                     fetchUsers();
                 } catch (err) {
                     setError('刪除失敗：' + (err.message || String(err)));
@@ -574,17 +526,9 @@
 
             const handleEditUnitSave = async () => {
                 const { userId, value } = editUnitModal;
-                const user = users.find(u => u.id === userId);
-                const currentMetadata = user?.user_metadata || {};
-
                 setLoadingUsers(true);
                 try {
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-                        method: 'PUT',
-                        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ user_metadata: { ...currentMetadata, unit: value.trim() } })
-                    });
-                    if (!response.ok) throw new Error('更新失敗');
+                    await callAdminFn('updateUnit', { userId, unit: value.trim() });
                     setEditUnitModal({ open: false, userId: null, userEmail: '', value: '' });
                     fetchUsers();
                 } catch (err) {
@@ -602,20 +546,7 @@
                 }
                 setError(null);
                 try {
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'apikey': serviceKey,
-                            'Authorization': `Bearer ${serviceKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ password: newPwd })
-                    });
-
-                    if (!response.ok) {
-                        const data = await response.json();
-                        throw new Error(data.msg || data.error || "重置密碼失敗");
-                    }
+                    await callAdminFn('resetPassword', { userId, password: newPwd });
                     alert("密碼重置成功！");
                 } catch (err) {
                     setError('重置密碼失敗：' + err.message);
@@ -625,24 +556,11 @@
             const handleEditEmail = async (userId, currentEmail) => {
                 const newEmail = prompt(`請輸入新的電子郵件信箱：\n(目前信箱：${currentEmail})`, currentEmail);
                 if (!newEmail || newEmail.trim() === '' || newEmail === currentEmail) return;
-                
+
                 setError(null);
                 setLoadingUsers(true);
                 try {
-                    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
-                        method: 'PUT',
-                        headers: {
-                            'apikey': serviceKey,
-                            'Authorization': `Bearer ${serviceKey}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ email: newEmail.trim(), email_confirm: true })
-                    });
-
-                    if (!response.ok) {
-                        const data = await response.json();
-                        throw new Error(data.message || data.msg || data.error || "修改信箱失敗");
-                    }
+                    await callAdminFn('updateEmail', { userId, email: newEmail.trim() });
                     alert("信箱修改成功！");
                     fetchUsers();
                 } catch (err) {
@@ -656,20 +574,23 @@
                 if (!window.confirm('確定要根據預設名單自動修正所有帳號的所屬機構嗎？\n這將會補齊已建立但缺乏機構資訊的帳號。')) return;
                 setLoadingUsers(true);
                 let count = 0;
+                const failures = [];
                 try {
                     for (let u of users) {
                         const mappedUnit = EMAIL_TO_UNIT_MAP[u.email.toLowerCase()];
                         // 只有當該帳號完全沒有設定機構時，才自動補齊
-                        if (mappedUnit && !u.user_metadata?.unit) {
-                            await fetch(`${supabaseUrl}/auth/v1/admin/users/${u.id}`, {
-                                method: 'PUT',
-                                headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ user_metadata: { ...u.user_metadata, unit: mappedUnit } })
-                            });
-                            count++;
+                        if (mappedUnit && !u.app_metadata?.unit) {
+                            try {
+                                await callAdminFn('updateUnit', { userId: u.id, unit: mappedUnit });
+                                count++;
+                            } catch (e) {
+                                failures.push(`${u.email}：${e.message}`);
+                            }
                         }
                     }
-                    alert(`修正完成！共更新 ${count} 個帳號。`);
+                    let msg = `修正完成！共更新 ${count} 個帳號。`;
+                    if (failures.length > 0) msg += `\n${failures.length} 個失敗：\n${failures.join('\n')}`;
+                    alert(msg);
                     fetchUsers();
                 } catch (err) {
                     setError('修正過程中發生錯誤：' + err.message);
@@ -685,49 +606,29 @@
                 setSyncStatus({ loading: true, message: '同步中...' });
 
                 try {
-                    // 1. 同步人員名單（結構為 { unit: { category: [names] } }，三層）
+                    // 1. 同步人員名單（結構為 { unit: { category: [names] } }，三層）。
+                    // 改用逐筆 upsert，取代原本「先刪整個機構再整批插入」——那個做法
+                    // 昨晚才實際造成一個機構的全部人員被刪光（詳見專案紀錄）。
                     const localPersonnel = Storage.getPersonnel();
+                    let personnelFailCount = 0;
                     if (localPersonnel && Object.keys(localPersonnel).length > 0) {
-                        const perHeaders = {
-                            'apikey': serviceKey, // 改用 serviceKey 繞過 RLS
-                            'Authorization': `Bearer ${serviceKey}`,
-                            'Content-Type': 'application/json',
-                            'Prefer': 'return=minimal'
-                        };
-                        // 逐機構刪除並重新插入
                         for (const [unit, cats] of Object.entries(localPersonnel)) {
-                            const encodedUnit = encodeURIComponent(unit);
-                            await fetch(`${supabaseUrl}/rest/v1/audit_personnel?unit=eq.${encodedUnit}`, {
-                                method: 'DELETE', headers: perHeaders
-                            });
-                            const rows = [];
-                            Object.entries(cats || {}).forEach(([cat, names]) => {
-                                (Array.isArray(names) ? names : []).forEach(name => {
-                                    if (name && String(name).trim()) {
-                                        // 移除 user_id，因為資料庫 API 未辨識此欄位
-                                        rows.push({ unit, category: cat, name: String(name).trim() });
-                                    }
-                                });
-                            });
-                            if (rows.length > 0) {
-                                await fetch(`${supabaseUrl}/rest/v1/audit_personnel`, {
-                                    method: 'POST', headers: perHeaders, body: JSON.stringify(rows)
-                                });
+                            for (const [cat, names] of Object.entries(cats || {})) {
+                                for (const name of (Array.isArray(names) ? names : [])) {
+                                    if (!name || !String(name).trim()) continue;
+                                    const result = await dataStore.personnel.upsert({ unit, category: cat, name: String(name).trim() });
+                                    if (!result.ok) personnelFailCount++;
+                                }
                             }
                         }
                     }
 
-                    // 2. 同步題庫 (Templates)
+                    // 2. 同步題庫（RLS 要求 is_admin()，用登入者自己的權杖即可）
                     const localTemplates = Storage.getTemplates();
                     if (localTemplates.length > 0) {
                         await fetch(`${supabaseUrl}/rest/v1/audit_templates`, {
                             method: 'POST',
-                            headers: {
-                                'apikey': serviceKey,
-                                'Authorization': `Bearer ${serviceKey}`,
-                                'Content-Type': 'application/json',
-                                'Prefer': 'resolution=merge-duplicates'
-                            },
+                            headers: restHeaders({ 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' }),
                             body: JSON.stringify(localTemplates.map(t => ({
                                 id: t.id,
                                 name: t.name,
@@ -745,71 +646,23 @@
                         });
                     }
 
-                    // 3. 同步紀錄 (Records)
+                    // 3. 同步紀錄：分批送出並回報成敗，取代原本不分批的單一請求。
                     const localRecords = Storage.getRecords();
+                    let recordsFailBatches = 0;
                     if (localRecords.length > 0) {
-                        await fetch(`${supabaseUrl}/rest/v1/audit_records`, {
-                            method: 'POST',
-                            headers: {
-                                'apikey': serviceKey,
-                                'Authorization': `Bearer ${serviceKey}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(localRecords.map(r => ({
-                                audit_content: {
-                                    date: r.date,
-                                    templateId: r.templateId,
-                                    auditName: r.auditName,
-                                    unitCategory: r.unitCategory,
-                                    unit: String(r.unit || '').trim(),
-                                    target: r.target,
-                                    jobTitle: r.jobTitle,
-                                    auditor: r.auditor,
-                                    score: r.score,
-                                    score2: r.score2,
-                                    notes: r.notes,
-                                    isDual: !!r.isDual,
-                                    technique: r.technique,
-                                    checklist: r.checklist
-                                },
-                                user_id: session?.user?.id || null
-                            })))
-                        });
+                        const results = await dataStore.records.createMany(localRecords, 100);
+                        recordsFailBatches = results.filter(r => !r.ok).length;
                     }
 
-                    setSyncStatus({ loading: false, message: '✅ 同步完成！所有資料已上傳至雲端。' });
+                    let msg = '✅ 同步完成！';
+                    if (personnelFailCount > 0) msg += `\n⚠️ ${personnelFailCount} 位人員同步失敗。`;
+                    if (recordsFailBatches > 0) msg += `\n⚠️ ${recordsFailBatches} 批紀錄同步失敗。`;
+                    setSyncStatus({ loading: false, message: msg });
                 } catch (err) {
                     console.error("Sync error:", err);
                     setSyncStatus({ loading: false, message: '❌ 同步失敗：' + err.message });
                 }
             };
-
-            if (!isAdminAuth) {
-                return (
-                    <div className="animate-fade-in max-w-md mx-auto bg-white p-8 rounded-2xl shadow-sm border border-red-100 mt-10">
-                        <div className="flex items-center gap-3 mb-6 text-red-600">
-                            <IconAdmin />
-                            <h2 className="text-xl font-bold">系統後台登入</h2>
-                        </div>
-                        <p className="text-sm text-slate-500 mb-6">請輸入 Supabase 的 <code className="bg-slate-100 px-1 rounded">service_role</code> 金鑰以解鎖後台管理權限。此金鑰僅暫存於當前瀏覽器中。</p>
-
-                        {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
-
-                        <form onSubmit={handleUnlock} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-1">Service Role Key</label>
-                                <input type="password" value={serviceKey} onChange={e => setServiceKey(e.target.value)} required
-                                    className="w-full p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all font-mono text-xs"
-                                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
-                            </div>
-                            <button type="submit" disabled={loadingUsers}
-                                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50">
-                                {loadingUsers ? '驗證中...' : '解鎖後台'}
-                            </button>
-                        </form>
-                    </div>
-                );
-            }
 
             return (
                 <>
@@ -817,7 +670,7 @@
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                             <div className="flex justify-between items-center border-b pb-4 mb-4">
                                 <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><IconAdmin /> 系統後台 - 帳號管理</h2>
-                                <button onClick={() => setIsAdminAuth(false)} className="text-sm text-slate-500 hover:text-red-500">鎖定並登出後台</button>
+                                <button onClick={fetchUsers} disabled={loadingUsers} className="text-sm text-slate-500 hover:text-primary disabled:opacity-50">{loadingUsers ? '讀取中...' : '🔄 重新整理'}</button>
                             </div>
 
                             {error && <div className="bg-red-50 text-red-500 p-3 rounded-lg text-sm mb-4 font-bold">{error}</div>}
@@ -920,8 +773,8 @@
                                                             <button onClick={() => handleEditEmail(u.id, u.email)} title="修改信箱" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
                                                         </td>
                                                         <td className="p-3 text-slate-800 font-bold group">
-                                                            {u.user_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}
-                                                            <button onClick={() => openEditUnitModal(u.id, u.email, u.user_metadata?.unit)} title="修改機構" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
+                                                            {u.app_metadata?.unit || <span className="text-red-400 text-xs">未設定</span>}
+                                                            <button onClick={() => openEditUnitModal(u.id, u.email, u.app_metadata?.unit)} title="修改機構" className="ml-2 text-blue-500 hover:text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">✏️</button>
                                                         </td>
                                                         <td className="p-3 text-slate-500 text-xs">{new Date(u.created_at).toLocaleString()}</td>
                                                         <td className="p-3 text-center flex justify-center gap-2">
@@ -4670,7 +4523,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         )}
 
                         {activeTab === 'admin' && isAdmin && (
-                            <AdminPanel handleTemplateUpload={handleTemplateUpload} handleExportBackup={handleExportBackup} handleImportBackup={handleImportBackup} handleDeduplicateRecords={handleDeduplicateRecords} session={session} />
+                            <AdminPanel handleTemplateUpload={handleTemplateUpload} handleExportBackup={handleExportBackup} handleImportBackup={handleImportBackup} handleDeduplicateRecords={handleDeduplicateRecords} session={session} dataStore={dataStore} />
                         )}
                     </main>
 
