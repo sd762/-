@@ -2174,6 +2174,40 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 });
             };
 
+            const handleUploadLocalPersonnel = () => {
+                const unit = formData.unit;
+                const unitData = personnelData[unit] || {};
+                const entries = [];
+                Object.entries(unitData).forEach(([cat, names]) => {
+                    (Array.isArray(names) ? names : []).forEach(name => {
+                        const cleanName = String(name || '').trim();
+                        if (cleanName) entries.push({ unit, category: cat, name: cleanName });
+                    });
+                });
+
+                if (!unit || entries.length === 0) {
+                    return showAlert('這台電腦目前沒有可上傳的人員名單。', 'ℹ️ 無本機名單');
+                }
+
+                showConfirm(
+                    `確定將這台電腦目前顯示的 ${entries.length} 位「${unit}」人員補上傳到雲端？\n\n系統只會新增缺少的人員，不會先刪除雲端名單。`,
+                    async () => {
+                        let success = 0;
+                        const failed = [];
+                        for (const entry of entries) {
+                            const result = await dataStore.personnel.upsert(entry);
+                            if (result.ok) success++;
+                            else failed.push({ ...entry, message: result.error?.message || '未知錯誤' });
+                        }
+                        let msg = `✅ 已補上傳 ${success} 位「${unit}」人員到雲端。`;
+                        if (failed.length > 0) msg += `\n❌ ${failed.length} 位失敗：${failed[0].message}`;
+                        if (failed.length === 0) msg += '\n現在可到其他電腦按「重新整理名單」確認。';
+                        showAlert(msg, failed.length > 0 ? '⚠️ 上傳結果' : '✅ 上傳完成');
+                    },
+                    '☁️ 補上傳本機名單'
+                );
+            };
+
             const handleTogglePersonnelSelect = (id) => {
                 setSelectedPersonnelIds(prev => {
                     const next = new Set(prev);
@@ -4658,6 +4692,9 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                         <IconFolder /> {formData.unit} - 人員名單管理
                                     </h3>
                                     <div className="flex items-center gap-2">
+                                        <button onClick={handleUploadLocalPersonnel} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow transition-colors">
+                                            ⬆️ 上傳本機名單
+                                        </button>
                                         <button onClick={async () => {
                                             // 每次新增/刪除人員時都已個別同步至雲端，這顆按鈕現在的
                                             // 作用是重新讀取雲端最新狀態（例如同機構其他人剛改過）。
