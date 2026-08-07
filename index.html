@@ -2195,8 +2195,30 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         const buffer = await file.arrayBuffer();
                         const wb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
                         wb.SheetNames.forEach(sheetName => {
-                            const data = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
-                            data.forEach(row => rawRows.push({ ...row, _sheetName: String(sheetName).trim() }));
+                            const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '', raw: false });
+                            const knownHeaders = ['姓名', '人員姓名', 'Name', '機構', '單位', '受稽單位', '職稱', '職務類別', '類別', '職務', 'Category'];
+                            const headerIndex = rows.findIndex(row => row.some(cell => knownHeaders.includes(String(cell).trim())));
+
+                            if (headerIndex >= 0) {
+                                const headers = rows[headerIndex].map(cell => String(cell).trim());
+                                rows.slice(headerIndex + 1).forEach(cells => {
+                                    const row = {};
+                                    headers.forEach((header, idx) => { if (header) row[header] = cells[idx]; });
+                                    rawRows.push({ ...row, _sheetName: String(sheetName).trim() });
+                                });
+                            } else {
+                                // 相容沒有標題列的舊名單：前三欄依序為「機構、職稱、姓名」。
+                                // 只接受可辨識的職稱，避免把同一活頁簿內其他用途的工作表誤匯入。
+                                rows.forEach(cells => {
+                                    const unit = String(cells[0] || '').trim();
+                                    const job = String(cells[1] || '').trim();
+                                    const name = String(cells[2] || '').trim();
+                                    const isPersonnelRow = /護理|護士|照顧服務員|照服|保母|行政/.test(job);
+                                    if (unit && name && isPersonnelRow) {
+                                        rawRows.push({ '機構': unit, '職稱': job, '姓名': name, _sheetName: String(sheetName).trim() });
+                                    }
+                                });
+                            }
                         });
                         successFiles++;
                     } catch (err) { failFiles++; }
@@ -2272,30 +2294,50 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     tempState[item.unit].add(item.name);
                 }
 
-                const process = (allowDup) => {
-                    let count = 0;
-                    setPersonnelData(prev => {
-                        const newData = { ...prev };
-                        finalItemsToAdd.forEach(item => {
-                            if (!newData[item.unit]) newData[item.unit] = { '護理類': [], '照服類': [], '行政類': [] };
-                            const allNames = Object.values(newData[item.unit]).flat();
-
-                            if (allNames.includes(item.name)) {
-                                if (allowDup) {
-                                    const unique = getUniqueName(newData[item.unit], item.name);
-                                    newData[item.unit][item.cat].push(unique);
-                                    count++;
-                                }
-                            } else {
-                                newData[item.unit][item.cat].push(item.name);
-                                count++;
-                            }
-                        });
-                        return newData;
+                const process = async (allowDup) => {
+                    const working = {};
+                    Object.entries(personnelData).forEach(([unit, cats]) => {
+                        working[unit] = {};
+                        Object.entries(cats).forEach(([cat, names]) => { working[unit][cat] = [...names]; });
                     });
-                    let msg = `✅ 成功匯入 ${count} 筆人員資料 (來自 ${successFiles} 個檔案)！`;
-                    if (failFiles > 0) msg += `\n❌ 失敗 ${failFiles} 個檔案。`;
-                    showAlert(msg);
+
+                    const candidates = [];
+                    for (const item of finalItemsToAdd) {
+                        if (!working[item.unit]) working[item.unit] = { '護理類': [], '照服類': [], '行政類': [] };
+                        const allNames = Object.values(working[item.unit]).flat();
+                        let finalName = item.name;
+                        if (allNames.includes(finalName)) {
+                            if (!allowDup) continue;
+                            finalName = getUniqueName(working[item.unit], finalName);
+                        }
+                        working[item.unit][item.cat] = [...(working[item.unit][item.cat] || []), finalName];
+                        candidates.push({ unit: item.unit, cat: item.cat, name: finalName });
+                    }
+
+                    let succeeded = [];
+                    const failed = [];
+                    for (const item of candidates) {
+                        const result = await dataStore.personnel.upsert({ unit: item.unit, category: item.cat, name: item.name });
+                        if (result.ok) succeeded.push(item);
+                        else failed.push({ ...item, message: result.error?.message || '未知錯誤' });
+                    }
+
+                    if (succeeded.length > 0) {
+                        setPersonnelData(prev => {
+                            const next = { ...prev };
+                            succeeded.forEach(item => {
+                                const unitData = next[item.unit] || { '護理類': [], '照服類': [], '行政類': [] };
+                                next[item.unit] = { ...unitData, [item.cat]: [...(unitData[item.cat] || []), item.name] };
+                            });
+                            return next;
+                        });
+                    }
+
+                    let msg = `✅ 已寫入雲端 ${succeeded.length} 筆人員資料 (來自 ${successFiles} 個檔案)。`;
+                    if (candidates.length === 0) msg = '沒有新增資料（名單皆已存在或已略過重複姓名）。';
+                    if (failed.length > 0) msg += `\n❌ ${failed.length} 筆寫入失敗：${failed[0].message}`;
+                    if (failFiles > 0) msg += `\n❌ 另有 ${failFiles} 個檔案無法解析。`;
+                    showAlert(msg, failed.length > 0 ? '⚠️ 匯入結果' : '✅ 匯入完成');
                     e.target.value = '';
                 };
 
