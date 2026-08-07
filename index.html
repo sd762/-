@@ -2257,7 +2257,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     const unit = String(cells[0] || '').trim();
                                     const job = String(cells[1] || '').trim();
                                     const name = String(cells[2] || '').trim();
-                                    const isPersonnelRow = /護理|護士|照顧服務員|照服|保母|行政/.test(job);
+                                    const isPersonnelRow = /護理|護士|照顧服務員|照服|保母|行政|其他/.test(job);
                                     if (unit && name && isPersonnelRow) {
                                         rawRows.push({ '機構': unit, '職稱': job, '姓名': name, _sheetName: String(sheetName).trim() });
                                     }
@@ -2329,20 +2329,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     return;
                 }
 
-                // 檢查重複
-                let hasDup = false;
-                const tempState = {}; // unit -> Set(names)
-                Object.keys(personnelData).forEach(u => {
-                    tempState[u] = new Set(Object.values(personnelData[u]).flat());
-                });
-
-                for (let item of finalItemsToAdd) {
-                    if (!tempState[item.unit]) tempState[item.unit] = new Set();
-                    if (tempState[item.unit].has(item.name)) { hasDup = true; break; }
-                    tempState[item.unit].add(item.name);
-                }
-
-                const process = async (allowDup) => {
+                const process = async () => {
                     const working = {};
                     Object.entries(personnelData).forEach(([unit, cats]) => {
                         working[unit] = {};
@@ -2350,16 +2337,24 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     });
 
                     const candidates = [];
+                    const seenImportNames = new Set();
+                    let alreadyLocal = 0;
                     for (const item of finalItemsToAdd) {
+                        const importKey = `${item.unit}__${item.name}`;
+                        if (seenImportNames.has(importKey)) continue;
+                        seenImportNames.add(importKey);
+
                         if (!working[item.unit]) working[item.unit] = { '護理類': [], '照服類': [], '行政類': [] };
                         const allNames = Object.values(working[item.unit]).flat();
-                        let finalName = item.name;
-                        if (allNames.includes(finalName)) {
-                            if (!allowDup) continue;
-                            finalName = getUniqueName(working[item.unit], finalName);
+                        const existsLocally = allNames.includes(item.name);
+                        if (existsLocally) {
+                            // 本機已有但雲端可能沒有：仍用原姓名執行 upsert，不能略過，
+                            // 也不能產生「姓名 (1)」這類假重複資料。
+                            alreadyLocal++;
+                        } else {
+                            working[item.unit][item.cat] = [...(working[item.unit][item.cat] || []), item.name];
                         }
-                        working[item.unit][item.cat] = [...(working[item.unit][item.cat] || []), finalName];
-                        candidates.push({ unit: item.unit, cat: item.cat, name: finalName });
+                        candidates.push({ unit: item.unit, cat: item.cat, name: item.name, addToState: !existsLocally });
                     }
 
                     let succeeded = [];
@@ -2373,7 +2368,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     if (succeeded.length > 0) {
                         setPersonnelData(prev => {
                             const next = { ...prev };
-                            succeeded.forEach(item => {
+                            succeeded.filter(item => item.addToState).forEach(item => {
                                 const unitData = next[item.unit] || { '護理類': [], '照服類': [], '行政類': [] };
                                 next[item.unit] = { ...unitData, [item.cat]: [...(unitData[item.cat] || []), item.name] };
                             });
@@ -2382,6 +2377,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     }
 
                     let msg = `✅ 已寫入雲端 ${succeeded.length} 筆人員資料 (來自 ${successFiles} 個檔案)。`;
+                    if (alreadyLocal > 0) msg += `\n其中 ${alreadyLocal} 位原本已在這台電腦，已用原姓名補同步，不會另外編號。`;
                     if (candidates.length === 0) msg = '沒有新增資料（名單皆已存在或已略過重複姓名）。';
                     if (failed.length > 0) msg += `\n❌ ${failed.length} 筆寫入失敗：${failed[0].message}`;
                     if (failFiles > 0) msg += `\n❌ 另有 ${failFiles} 個檔案無法解析。`;
@@ -2389,11 +2385,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     e.target.value = '';
                 };
 
-                if (hasDup) {
-                    showConfirm('偵測到同名人員 (機構內已存在或名單重複)。是否要自動在姓名後方標示 1、2... 並全部匯入？\n\n點選「取消」則會略過重複姓名。', () => process(true), '⚠️ 偵測到重複姓名', () => process(false));
-                } else {
-                    process(false);
-                }
+                await process();
             };
 
             const buildTableData = useCallback((categoryName) => {
