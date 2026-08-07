@@ -2230,8 +2230,18 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         const wb = window.XLSX.read(new Uint8Array(buffer), { type: 'array' });
                         wb.SheetNames.forEach(sheetName => {
                             const rows = window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '', raw: false });
-                            const knownHeaders = ['姓名', '人員姓名', 'Name', '機構', '單位', '受稽單位', '職稱', '職務類別', '類別', '職務', 'Category'];
-                            const headerIndex = rows.findIndex(row => row.some(cell => knownHeaders.includes(String(cell).trim())));
+                            const nameHeaders = ['姓名', '人員姓名', 'Name'];
+                            const unitHeaders = ['機構', '單位', '受稽單位'];
+                            const jobHeaders = ['職稱', '職務類別', '類別', '職務', 'Category'];
+                            const knownHeaders = [...nameHeaders, ...unitHeaders, ...jobHeaders];
+                            const normalizedRow = row => row.map(cell => String(cell).trim());
+                            const anyHeaderIndex = rows.findIndex(row => normalizedRow(row).some(cell => knownHeaders.includes(cell)));
+                            const headerIndex = rows.findIndex(row => {
+                                const cells = normalizedRow(row);
+                                return cells.some(cell => nameHeaders.includes(cell)) &&
+                                    cells.some(cell => unitHeaders.includes(cell)) &&
+                                    cells.some(cell => jobHeaders.includes(cell));
+                            });
 
                             if (headerIndex >= 0) {
                                 const headers = rows[headerIndex].map(cell => String(cell).trim());
@@ -2240,7 +2250,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     headers.forEach((header, idx) => { if (header) row[header] = cells[idx]; });
                                     rawRows.push({ ...row, _sheetName: String(sheetName).trim() });
                                 });
-                            } else {
+                            } else if (anyHeaderIndex < 0) {
                                 // 相容沒有標題列的舊名單：前三欄依序為「機構、職稱、姓名」。
                                 // 只接受可辨識的職稱，避免把同一活頁簿內其他用途的工作表誤匯入。
                                 rows.forEach(cells => {
@@ -2274,7 +2284,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                         else if (rawUnit === '二館' || rawUnit.includes('二館')) targetUnit = '清福二館';
                         else if (rawUnit === '三館' || rawUnit.includes('三館')) targetUnit = '清福三館';
                         else if (rawUnit.includes('護理之家')) targetUnit = '清福護理之家';
-                        else targetUnit = rawUnit;
+                        else {
+                            const exactUnit = ALL_UNITS.find(unit => unit === rawUnit);
+                            const shorthandUnit = ALL_UNITS.find(unit => unit.endsWith('養老院') && unit.slice(0, -4) === rawUnit);
+                            targetUnit = exactUnit || shorthandUnit || rawUnit;
+                        }
                     }
 
                     if (!['護理類', '照服類', '行政類'].includes(cat)) {
