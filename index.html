@@ -1715,8 +1715,10 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             const [pwdError, setPwdError] = useState('');
             const [pwdMsg, setPwdMsg] = useState('');
 
-            const userRole = session?.user?.user_metadata?.role;
-            let userUnit = session?.user?.user_metadata?.unit;
+            // 新版管理後台把不可由使用者自行竄改的角色／機構寫在 app_metadata；
+            // 舊帳號仍可能保留在 user_metadata，因此保留相容性回退。
+            const userRole = session?.user?.app_metadata?.role || session?.user?.user_metadata?.role;
+            let userUnit = session?.user?.app_metadata?.unit || session?.user?.user_metadata?.unit;
 
             if (!userUnit && session?.user?.email) {
                 userUnit = EMAIL_TO_UNIT_MAP[session.user.email.toLowerCase()] || '';
@@ -1819,8 +1821,8 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 };
 
                 // Compute role/unit from the live session object
-                const sessRole = sess.user?.user_metadata?.role;
-                let sessUnit = sess.user?.user_metadata?.unit;
+                const sessRole = sess.user?.app_metadata?.role || sess.user?.user_metadata?.role;
+                let sessUnit = sess.user?.app_metadata?.unit || sess.user?.user_metadata?.unit;
                 if (!sessUnit && sess.user?.email) {
                     sessUnit = EMAIL_TO_UNIT_MAP[sess.user.email.toLowerCase()] || '';
                 }
@@ -2758,7 +2760,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     return out;
                 });
 
-                const currentUnit = session?.user?.user_metadata?.unit || filterUnit || '清福護理之家';
+                const currentUnit = session?.user?.app_metadata?.unit || session?.user?.user_metadata?.unit || filterUnit || '清福護理之家';
                 const headerText = `新北市私立${currentUnit}`;
 
                 const wb = window.XLSX.utils.book_new();
