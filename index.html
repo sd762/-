@@ -2216,6 +2216,46 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 });
             };
 
+            // 產生「人員名單匯入範本」：欄位與 handleImportPersonnel 對齊（機構／職稱／姓名），附範例列與說明頁。
+            const handleDownloadPersonnelTemplate = () => {
+                try {
+                    const unitName = formData.unit || (canViewAll ? '清福養老院' : userUnit) || '機構名稱';
+                    const wb = window.XLSX.utils.book_new();
+
+                    const rows = [
+                        ['機構', '職稱', '姓名'],
+                        [unitName, '護理類', '範例-王小明'],
+                        [unitName, '照服類', '範例-陳美華'],
+                        [unitName, '行政類', '範例-林大同']
+                    ];
+                    const ws = window.XLSX.utils.aoa_to_sheet(rows);
+                    ws['!cols'] = [{ wch: 18 }, { wch: 12 }, { wch: 16 }];
+                    window.XLSX.utils.book_append_sheet(wb, ws, '人員名單');
+
+                    const guide = [
+                        ['人員名單匯入說明'],
+                        ['1. 請保留第 1 列的標題「機構」「職稱」「姓名」，勿更改文字。'],
+                        ['2. 第 2 列起為範例，照格式往下填即可；範例列可自行刪除。'],
+                        ['3. 職稱請填「護理類」「照服類」「行政類」其中一種。'],
+                        ['   也可填護理師／護士（歸護理類）、照服員／照顧服務員／保母（歸照服類），其餘一律歸行政類。'],
+                        ['4. 機構欄可填全名（如「清福養老院」）或簡稱（如「清福」「一館」），系統會自動對應。'],
+                        ['5. 一般機構帳號僅能匯入自己機構的人員；管理員可一次匯入多間機構。'],
+                        ['6. 匯入後會自動與雲端同步，同機構其他帳號按「重新整理名單」即可看到。']
+                    ];
+                    const gws = window.XLSX.utils.aoa_to_sheet(guide);
+                    gws['!cols'] = [{ wch: 70 }];
+                    window.XLSX.utils.book_append_sheet(wb, gws, '說明');
+
+                    const out = window.XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+                    const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = '人員名單_匯入範本.xlsx'; a.click();
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    showAlert('產生範本失敗：' + (err.message || String(err)));
+                }
+            };
+
             const handleImportPersonnel = async (e) => {
                 const files = Array.from(e.target.files);
                 if (files.length === 0) return;
@@ -4564,6 +4604,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                             <li>點擊「受評者」旁的 <span className="text-blue-600 font-bold">管理名單</span> 按鈕，可依機構分類新增或刪除人員。</li>
                                             <li>**機構內資料共享**：系統會根據您的登入帳號，自動載入您「所屬機構」的專屬名單。</li>
                                             <li>新增或刪除人員時會立即同步至雲端，無需額外操作。若要看到同機構其他護理長剛做的修改，點擊右上角的 <span className="text-emerald-600 font-bold">☁️ 重新整理名單</span> 即可。</li>
+                                            <li><b>批次匯入名單</b>：可用 Excel 一次匯入多位人員（欄位為「機構／職稱／姓名」）。不確定格式請先按 <span className="text-emerald-600 font-bold">下載名單匯入範本</span>，範本已附範例列與填寫說明；職稱填「護理類／照服類／行政類」，機構可填全名或簡稱。</li>
                                         </ul>
                                         <p><strong>3. 快速打分機制與雙指標：</strong>支援「符合(滿分)、部分(自訂分數)、不符(零分)」快速給分。針對「洗手考評」，支援獨立的洗手時機與雙指標（遵從性/正確性）自動連動邏輯。</p>
                                         <p><strong>4. ⚡ 批次快速建檔 (2.1 新增)：</strong>選好機構與考核項目後，點「受評者」旁的 <span className="text-amber-600 font-bold">⚡ 批次建檔</span> 按鈕，可一次勾選多位人員、設定分數範圍（洗手另設遵從率/正確率範圍），系統會為每人隨機生成範圍內分數並各建一筆紀錄。分數會<b>依考核項目自動分配到各評分細項（洗手則產生各時機明細）</b>，內容與逐項輸入一致，職務也會依名單分類自動帶入；本月已有紀錄者自動跳過，不會重複。</p>
@@ -4810,11 +4851,16 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                         </div>
                                         <div className="border-t border-slate-200 pt-4">
                                             <h4 className="font-bold text-sm text-slate-700 mb-2">📥 批次匯入名單</h4>
-                                            <p className="text-[10px] text-slate-500 mb-2">請準備 Excel 檔案，欄位標題需為「機構」、「職稱」與「姓名」。</p>
-                                            <label className="bg-emerald-600 text-white px-4 py-2 rounded text-sm font-bold flex items-center justify-center gap-2 cursor-pointer hover:bg-emerald-700 shadow">
-                                                <IconImport /> 選擇檔案匯入
-                                                <input type="file" multiple accept=".xlsx, .xls, .csv" onChange={handleImportPersonnel} className="hidden" />
-                                            </label>
+                                            <p className="text-[10px] text-slate-500 mb-2">請準備 Excel 檔案，欄位標題需為「機構」、「職稱」與「姓名」。不確定格式請先下載範本。</p>
+                                            <div className="flex flex-col gap-2">
+                                                <button type="button" onClick={handleDownloadPersonnelTemplate} className="bg-white text-emerald-700 border border-emerald-300 px-4 py-2 rounded text-sm font-bold flex items-center justify-center gap-2 hover:bg-emerald-50 shadow-sm">
+                                                    <IconDownload /> 下載名單匯入範本
+                                                </button>
+                                                <label className="bg-emerald-600 text-white px-4 py-2 rounded text-sm font-bold flex items-center justify-center gap-2 cursor-pointer hover:bg-emerald-700 shadow">
+                                                    <IconImport /> 選擇檔案匯入
+                                                    <input type="file" multiple accept=".xlsx, .xls, .csv" onChange={handleImportPersonnel} className="hidden" />
+                                                </label>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
