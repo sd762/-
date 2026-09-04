@@ -202,8 +202,20 @@
                 e.preventDefault();
                 setLoading(true);
                 setError(null);
-                const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-                if (error) setError('登入失敗，請檢查電子郵件與密碼');
+                // email 前後空白（例如從別處複製貼上帶進來的）會讓驗證直接失敗，先清掉
+                const { error } = await supabaseClient.auth.signInWithPassword({ email: email.trim(), password });
+                if (error) {
+                    // 顯示 Supabase 回傳的真正原因，不要一律用「請檢查帳密」帶過——
+                    // 密碼錯誤、帳號未確認、嘗試次數過多被暫時鎖定，處理方式完全不同。
+                    const raw = error.message || '';
+                    let hint = '登入失敗，請檢查電子郵件與密碼';
+                    if (/invalid login credentials/i.test(raw)) hint = '登入失敗：電子郵件或密碼不正確';
+                    else if (/email not confirmed/i.test(raw)) hint = '登入失敗：此帳號的電子郵件尚未完成驗證，請聯絡管理員';
+                    else if (/too many requests|rate limit/i.test(raw)) hint = '嘗試次數過多，已被暫時鎖定，請等待幾分鐘後再試';
+                    else if (/failed to fetch|network/i.test(raw)) hint = '無法連線至伺服器，請確認網路後再試';
+                    setError(`${hint}（原始訊息：${raw}）`);
+                    console.error('登入失敗:', error);
+                }
                 setLoading(false);
             };
 
