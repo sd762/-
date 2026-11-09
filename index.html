@@ -11,6 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -2872,7 +2873,11 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     if (logoBase64) {
                         const imageId = wb2.addImage({ base64: logoBase64, extension: 'png' });
                         for (const ws of wb2.worksheets) {
-                            ws.addImage(imageId, { tl: { col: 0.08, row: 0.08 }, ext: { width: 110, height: 48 }, editAs: 'oneCell' });
+                            // 預設只在左上角放一個；超過一頁寬的工作表（區塊往右延伸）則每個區塊起點各放一個
+                            const sheetCfg = (pageOpts && pageOpts.perSheet && pageOpts.perSheet[ws.name]) || {};
+                            (sheetCfg.logoCols || [0]).forEach(c => {
+                                ws.addImage(imageId, { tl: { col: c + 0.08, row: 0.08 }, ext: { width: 110, height: 48 }, editAs: 'oneCell' });
+                            });
                         }
                     }
                     // 鎖定列印版面：A4 + 指定方向 + 寬度縮成一頁，避免每次列印都要手動調整頁面設定
@@ -2904,7 +2909,32 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                             }
                         }
                     }
-                    const outBuffer = await wb2.xlsx.writeBuffer();
+                    let outBuffer = await wb2.xlsx.writeBuffer();
+                    // 多個列印範圍：每個範圍各自成為一頁（用於「區塊往右延伸」的工作表）。
+                    // 需寫成「單一」_xlnm.Print_Area 定義，範圍以逗號分隔。
+                    try {
+                        const areaSheets = pageOpts && pageOpts.perSheet ? wb2.worksheets.map((w, idx) => ({ w, idx, cfg: pageOpts.perSheet[w.name] })).filter(x => x.cfg && x.cfg.printAreas && x.cfg.printAreas.length) : [];
+                        if (areaSheets.length > 0 && typeof JSZip !== 'undefined') {
+                            const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const zip = await JSZip.loadAsync(outBuffer);
+                            let wbXml = await zip.file('xl/workbook.xml').async('string');
+                            const names = areaSheets.map(({ w, idx, cfg }) => {
+                                const q = "'" + String(w.name).replace(/'/g, "''") + "'";
+                                const ranges = cfg.printAreas.map(a => {
+                                    const [from, to] = a.split(':');
+                                    const abs = (ref) => ref.replace(/^([A-Z]+)(\d+)$/, '$$$1$$$2');
+                                    return q + '!' + abs(from) + ':' + abs(to);
+                                }).join(',');
+                                return '<definedName name="_xlnm.Print_Area" localSheetId="' + idx + '">' + esc(ranges) + '</definedName>';
+                            }).join('');
+                            if (wbXml.includes('<definedNames>')) wbXml = wbXml.replace('</definedNames>', names + '</definedNames>');
+                            else wbXml = wbXml.replace('</sheets>', '</sheets><definedNames>' + names + '</definedNames>');
+                            zip.file('xl/workbook.xml', wbXml);
+                            outBuffer = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+                        }
+                    } catch (paErr) {
+                        console.error('寫入多重列印範圍失敗，改以預設分頁：', paErr);
+                    }
                     const blob = new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -3164,7 +3194,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
 
                 const wb = window.XLSX.utils.book_new();
                 const bandStartRows = []; // 洗手稽核明細每組起始列，用於強制分頁（每 3 人一頁）
-                const generalSheetNames = []; // 技術考（非洗手）各頁工作表名稱，每張鎖一頁 A4
+                const generalSheetCfg = {}; // 技術考（非洗手）各工作表的列印設定（A4 直向、固定縮放、每個區塊一頁）
 
                 // === 洗手遵從性及正確性：始終產出稽核明細 + 統計報表 ===
                 if (handHygieneTargets.length > 0) {
@@ -3532,14 +3562,17 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                             chunks.push(all.slice(i, i + PEOPLE_PER_PAGE));
                         }
 
-                        chunks.forEach((people, ci) => {
+                        // 同一個考核項目只產生「一張」工作表；超過 10 人時，第 11 位起以區塊往右側延伸，
+                        // 每個區塊自帶標題與「查核項目／配分」欄，列印時一個區塊一頁（可一次列印、雙面列印）。
+                        const TOTAL_W = 100, SCORE_W = 6;
+                        const padRow = (arr, n) => { const a2 = arr.slice(); while (a2.length < n) a2.push(''); return a2; };
+                        const buildBlock = (people) => {
                             const nCols = 2 + people.length;
                             const data = [];
                             data.push([headerText]);
                             data.push([`${twTitle}　${tagByAuditName(auditName)}`]);
                             data.push(['查核項目', '配分', ...people.map(p => p.target || '')]);
                             data.push(['', '', ...people.map(p => { const d = String(p.date || '').split('-'); return d.length === 3 ? `${parseInt(d[1], 10)}/${parseInt(d[2], 10)}` : (p.date || ''); })]);
-
                             baseChecklist.forEach((item, idx) => {
                                 const row = [item.name || `項目 ${idx + 1}`, item.maxScore != null ? item.maxScore : ''];
                                 people.forEach(p => {
@@ -3548,72 +3581,93 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                 });
                                 data.push(row);
                             });
-
-                            const firstItemRow = 4;
-                            const firstItemRowIdx = firstItemRow;
-                            const lastItemRow = firstItemRow + baseChecklist.length - 1;
                             data.push(['總分', totalMax || '', ...people.map(p =>
                                 (p.checklist || []).reduce((a, it) => a + (Number(it.score) || 0), 0))]);
                             data.push(['得分率 (%)', '', ...people.map(p => (p.score != null && p.score !== '') ? p.score : '')]);
-
                             const auditors = [...new Set(people.map(p => p.auditor).filter(Boolean))].join('、');
                             data.push([`稽核人員：${auditors}　　覆核者：機構主任(業務負責人)：`]);
-                            const reviewerRow = data.length - 1;
-
-                            const ws = window.XLSX.utils.aoa_to_sheet(data);
-                            ws['!merges'] = [
-                                { s: { r: 0, c: 0 }, e: { r: 0, c: nCols - 1 } },
-                                { s: { r: 1, c: 0 }, e: { r: 1, c: nCols - 1 } },
-                                { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } },
-                                { s: { r: 2, c: 1 }, e: { r: 3, c: 1 } },
-                                { s: { r: reviewerRow, c: 0 }, e: { r: reviewerRow, c: nCols - 1 } }
-                            ];
-                            // ── 自適應版面：總寬約等於 A4 直向可印寬度；人少時姓名欄加寬、項目欄變大 ──
-                            const TOTAL_W = 100, SCORE_W = 6;
+                            // 欄寬：總寬約等於 A4 直向可印寬度；人少時姓名欄加寬、項目欄變大
                             const pw = Math.min(11, Math.max(6, (TOTAL_W - SCORE_W - 34) / people.length));
                             const itemW = Math.round(TOTAL_W - SCORE_W - people.length * pw);
-                            ws['!cols'] = [{ wch: itemW }, { wch: SCORE_W }, ...people.map(() => ({ wch: pw }))];
-                            // 列高：固定列合計約 176pt；其餘高度平均分給項目列（上限 80pt），再依項目文字長度保底，避免截字
-                            const FIXED_H = 176, PAGE_H = 740;
-                            const baseH = Math.min(80, Math.max(26, (PAGE_H - FIXED_H) / Math.max(1, baseChecklist.length)));
-                            const charsPerLine = Math.max(8, Math.floor(itemW / 1.9));
-                            const rowsH = [];
-                            rowsH[0] = { hpt: 26 }; rowsH[1] = { hpt: 22 }; rowsH[2] = { hpt: 40 }; rowsH[3] = { hpt: 20 };
-                            baseChecklist.forEach((item, idx) => {
-                                const lines = Math.ceil(String(item.name || '').length / charsPerLine) || 1;
-                                rowsH[firstItemRowIdx + idx] = { hpt: Math.round(Math.max(baseH, lines * 13.5 + 6)) };
-                            });
-                            rowsH[firstItemRowIdx + baseChecklist.length] = { hpt: 22 };
-                            rowsH[firstItemRowIdx + baseChecklist.length + 1] = { hpt: 22 };
-                            rowsH[reviewerRow] = { hpt: 26 };
-                            ws['!rows'] = rowsH;
+                            return { people, data, nCols, pw, itemW, colsW: [itemW, SCORE_W, ...people.map(() => pw)] };
+                        };
+                        const blocks = chunks.map(buildBlock);
+                        const firstItemRow = 4;
+                        const lastItemRow = firstItemRow + baseChecklist.length - 1;
+                        const reviewerRow = blocks[0].data.length - 1;
+                        const offs = [];
+                        blocks.reduce((acc, b) => { offs.push(acc); return acc + b.nCols; }, 0);
 
-                            applyGlobalStyle(ws);
-                            const setStyle = (r, c, st) => {
-                                const ref = window.XLSX.utils.encode_cell({ r, c });
-                                if (!ws[ref]) ws[ref] = { v: '' };
-                                ws[ref].s = st;
-                            };
-                            setStyle(0, 0, cellStyle({ bold: true, sz: 14 }));
-                            setStyle(1, 0, cellStyle({ bold: true, sz: 12 }));
-                            setStyle(2, 0, cellStyle({ bold: true }));
-                            setStyle(2, 1, cellStyle({ bold: true }));
-                            people.forEach((p, i) => setStyle(2, 2 + i, cellStyle({ bold: true, sz: 10 })));
-                            // 查核項目名稱靠左，較易閱讀
-                            for (let r = firstItemRow; r <= lastItemRow; r++) {
-                                setStyle(r, 0, cellStyle({ align: 'left', sz: 10 }));
-                            }
-                            setStyle(lastItemRow + 1, 0, cellStyle({ bold: true }));
-                            setStyle(lastItemRow + 2, 0, cellStyle({ bold: true }));
-                            setStyle(reviewerRow, 0, cellStyle({ align: 'left', bold: true }));
-
-                            let base = `${month}${auditName}`.replace(/[\\/?*\[\]:]/g, '');
-                            const sheetName = chunks.length > 1
-                                ? `${base.substring(0, 27)}(${ci + 1})`
-                                : base.substring(0, 31);
-                            window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
-                            generalSheetNames.push(sheetName);
+                        // 各區塊同一組列並排成一張表（先把每列補齊到該區塊欄數，後面區塊的欄位位置才不會位移）
+                        const merged = [];
+                        for (let r = 0; r <= reviewerRow; r++) {
+                            merged.push(blocks.reduce((acc, b) => acc.concat(padRow(b.data[r] || [], b.nCols)), []));
+                        }
+                        const ws = window.XLSX.utils.aoa_to_sheet(merged);
+                        ws['!merges'] = blocks.flatMap((b, ci) => {
+                            const o = offs[ci];
+                            return [
+                                { s: { r: 0, c: o }, e: { r: 0, c: o + b.nCols - 1 } },
+                                { s: { r: 1, c: o }, e: { r: 1, c: o + b.nCols - 1 } },
+                                { s: { r: 2, c: o }, e: { r: 3, c: o } },
+                                { s: { r: 2, c: o + 1 }, e: { r: 3, c: o + 1 } },
+                                { s: { r: reviewerRow, c: o }, e: { r: reviewerRow, c: o + b.nCols - 1 } }
+                            ];
                         });
+                        ws['!cols'] = blocks.flatMap(b => b.colsW.map(w => ({ wch: w })));
+
+                        // 列高：固定列合計約 176pt；其餘高度平均分給項目列（上限 80pt），再依項目文字長度保底，避免截字。
+                        // 以第一個區塊（人數最多、項目欄最窄）為準。
+                        const FIXED_H = 176, PAGE_H = 740;
+                        const baseH = Math.min(110, Math.max(26, (PAGE_H - FIXED_H) / Math.max(1, baseChecklist.length)));
+                        const charsPerLine = Math.max(8, Math.floor(blocks[0].itemW / 1.9));
+                        const rowsH = [];
+                        rowsH[0] = { hpt: 26 }; rowsH[1] = { hpt: 22 }; rowsH[2] = { hpt: 40 }; rowsH[3] = { hpt: 20 };
+                        baseChecklist.forEach((item, idx) => {
+                            const lines = Math.ceil(String(item.name || '').length / charsPerLine) || 1;
+                            rowsH[firstItemRow + idx] = { hpt: Math.round(Math.max(baseH, lines * 13.5 + 6)) };
+                        });
+                        rowsH[lastItemRow + 1] = { hpt: 22 };
+                        rowsH[lastItemRow + 2] = { hpt: 22 };
+                        rowsH[reviewerRow] = { hpt: 26 };
+                        ws['!rows'] = rowsH;
+
+                        applyGlobalStyle(ws);
+                        const setStyle = (r, c, st) => {
+                            const ref = window.XLSX.utils.encode_cell({ r, c });
+                            if (!ws[ref]) ws[ref] = { v: '' };
+                            ws[ref].s = st;
+                        };
+                        blocks.forEach((b, ci) => {
+                            const o = offs[ci];
+                            setStyle(0, o, cellStyle({ bold: true, sz: 14 }));
+                            setStyle(1, o, cellStyle({ bold: true, sz: 12 }));
+                            setStyle(2, o, cellStyle({ bold: true }));
+                            setStyle(2, o + 1, cellStyle({ bold: true }));
+                            b.people.forEach((p, i) => setStyle(2, o + 2 + i, cellStyle({ bold: true, sz: 10 })));
+                            for (let r = firstItemRow; r <= lastItemRow; r++) setStyle(r, o, cellStyle({ align: 'left', sz: 10 }));
+                            setStyle(lastItemRow + 1, o, cellStyle({ bold: true }));
+                            setStyle(lastItemRow + 2, o, cellStyle({ bold: true }));
+                            setStyle(reviewerRow, o, cellStyle({ align: 'left', bold: true }));
+                        });
+
+                        let base = `${month}${auditName}`.replace(/[\\/?*\[\]:]/g, '');
+                        let sheetName = base.substring(0, 31);
+                        for (let dup = 2; wb.SheetNames.includes(sheetName); dup++) sheetName = base.substring(0, 27) + '(' + dup + ')';
+                        window.XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+                        // 列印設定：固定縮放（Excel 在「縮成 N 頁」模式會忽略分頁設定，所以改為自行計算縮放比例）
+                        // 使「最寬的區塊」塞得進 A4 直向可印寬度、整張表塞得進可印高度；每個區塊各自成為一個列印範圍＝一頁。
+                        const blockPx = (b) => b.colsW.reduce((a, w) => a + Math.trunc(7 * w + 5), 0);
+                        const totalPt = rowsH.reduce((a, r2) => a + (r2 ? r2.hpt : 15), 0);
+                        const scaleW = (746 * 0.96) / Math.max(...blocks.map(blockPx)) * 100;
+                        const scaleH = (784 * 0.96) / totalPt * 100;
+                        generalSheetCfg[sheetName] = {
+                            orientation: 'portrait',
+                            scale: Math.max(30, Math.floor(Math.min(100, scaleW, scaleH))),
+                            printAreas: blocks.map((b, ci) => `${window.XLSX.utils.encode_col(offs[ci])}1:${window.XLSX.utils.encode_col(offs[ci] + b.nCols - 1)}${reviewerRow + 1}`),
+                            logoCols: offs
+                        };
                     });
                 }
 
@@ -3631,7 +3685,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                     fileName,
                     (() => {
                         const perSheet = {};
-                        generalSheetNames.forEach(n => { perSheet[n] = { orientation: 'portrait', fitOnePage: true }; });
+                        Object.keys(generalSheetCfg).forEach(n => { perSheet[n] = generalSheetCfg[n]; });
                         perSheet['稽核明細'] = { orientation: 'portrait', breaks: bandStartRows.slice(1) };
                         perSheet['統計報表'] = { orientation: 'landscape' };
                         return { defaults: { orientation: 'portrait' }, perSheet };
@@ -4883,7 +4937,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                     <div className="space-y-4 text-slate-700">
                                         <p><strong>1. 階層分類檢索：</strong>歷史資料會自動依「機構 &gt; 月份 &gt; 稽核項目」歸檔，點擊列表列可展開收合，方便快速找查特定紀錄。</p>
                                         <p><strong>2. 智慧排序功能 (2.0 新增)：</strong>若遇到同月份重複考核的問題，您可以使用上方的「下拉式排序選單」，將紀錄改為 <span className="text-emerald-600 font-bold">依姓名排序 (筆畫)</span> 或 <span className="text-emerald-600 font-bold">依職務排序</span>，能快速抓出重複打考績的紀錄並刪除。</p>
-                                        <p><strong>3. 批次管理與匯出：</strong>可勾選「整個機構、整個月份、單一項目、子項目或單筆資料」進行批次刪除，或單獨匯出成報表。<b>換機構前請先按右上方「✕ 取消全部勾選」</b>，以免把上一家的勾選一併匯出；若勾選跨了多個機構，匯出前系統會跳出確認視窗，列出涉及的機構供您核對。針對洗手考評，系統會自動生成符合疾管署規範的洗手報表格式（每 3 人一組、含時機明細與覆核者欄）。<b>匯出的 Excel 已預設為 A4 直向、寬度自動縮成一頁</b>：一般技術考比照紙本評核表（查核項目在列、受測人員在欄、每頁 10 人，項目多寡都會自動撐滿單頁）；洗手稽核明細每 3 人一頁；分析總表為 A4 橫向，並附機構 Logo，開啟後可直接列印。</p>
+                                        <p><strong>3. 批次管理與匯出：</strong>可勾選「整個機構、整個月份、單一項目、子項目或單筆資料」進行批次刪除，或單獨匯出成報表。<b>換機構前請先按右上方「✕ 取消全部勾選」</b>，以免把上一家的勾選一併匯出；若勾選跨了多個機構，匯出前系統會跳出確認視窗，列出涉及的機構供您核對。針對洗手考評，系統會自動生成符合疾管署規範的洗手報表格式（每 3 人一組、含時機明細與覆核者欄）。<b>匯出的 Excel 已預設為 A4 直向、寬度自動縮成一頁</b>：一般技術考比照紙本評核表（查核項目在列、受測人員在欄、每 10 人一頁，項目多寡都會自動撐滿單頁；人數超過 10 人時，<b>同一張工作表往右側延伸</b>（不再另開分頁），每個區塊自帶標題與查核項目欄，列印時一個區塊一頁，可一次列印、雙面列印）；洗手稽核明細每 3 人一頁；分析總表為 A4 橫向，並附機構 Logo，開啟後可直接列印。</p>
                                         <p><strong>4. 匯入歷史與範本 (2.1 強化)：</strong>點「匯入歷史」可將舊資料 Excel 匯入系統，並選擇歸屬機構。若不確定格式，先按 <span className="text-green-600 font-bold">下載各考核匯入範本</span>，系統會產生一份 Excel（每個考核一張工作表、欄位已對齊、附範例與說明頁），照著填即可避免匯入錯誤。<b>洗手遵從性及正確性依技術分表</b>，每個洗手機會有「洗手行動／步驟」欄，匯入後可完整還原時機明細並自動計算遵從率/正確率。</p>
                                     </div>
                                 </section>
