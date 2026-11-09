@@ -36,6 +36,92 @@
 
 ---
 
+### 🗓️ 2026-11-09 更新紀錄：列印版面、依月份帶出項目、取消勾選與 Excel 匯出修復
+
+#### 1. 匯出 Excel 的 Logo／A4 版面「從來沒有生效」的根因（重要）
+* **現象**：匯出報表沒有機構 Logo，且需要每次手動調整頁面才能列印。
+* **根因 A**：`addLogoToWorkbook` 以 `uint8Array.buffer` 載入，但 `XLSX.write(type:'array')` 回傳的是 **ArrayBuffer**（沒有 `.buffer`），結果載入 `undefined` → 一律拋錯 → 被 `catch` 吞掉 → 退回「無 Logo、無版面設定」的原始檔。已改為相容 ArrayBuffer / Uint8Array。
+* **根因 B（修好 A 之後才會暴露）**：SheetJS 產生的檔案沒有 `<sheetFormatPr>`，ExcelJS 載入再寫出時會漏掉**必填屬性 `defaultRowHeight`**，Excel 會判定檔案毀損而打不開。已在載入後逐一補上 `defaultRowHeight = 15`。
+* **教訓**：此類問題不能只靠閱讀程式碼或確認函式存在，必須**實際產出檔案並用 Excel 開啟驗證**。失敗時現在會跳出提醒，不再靜默退回。
+
+#### 2. 列印版面（A4 一鍵可印）
+* 技術考（非洗手）匯出改成比照紙本評核表：**查核項目在列、受測人員在欄、每頁 10 人**，鎖 **A4 直向**；欄寬、列高依項目數與文字長度自動計算，**項目少會撐滿、項目多自動縮成單頁**。日期列改為「月/日」避免折行。
+* 洗手稽核明細：維持原計分與欄位，鎖 A4 直向，**每 3 人強制一頁**；統計報表為 A4 橫向。
+* 分析總表：A4 橫向縮成一頁寬，並補上原本缺少的欄寬（實測 15 頁 → 3 頁）。
+
+#### 3. 先選日期 → 自動帶出當月表定項目
+* 現場考評改為先選「考核日期」，項目清單只列當月表定項目（取得方式與分析報表一致：年度覆寫 → 後台統一設定 → 預設）。可勾選「顯示全部項目（補考／加考）」。
+* 項目名稱標註適用對象 **(護理)／(照服)／(護理照服)**（僅顯示用，不改儲存的 `auditName`）。判斷時注意 `AN(` 含有 `N(`，護理縮寫需排除前面是英文字母的情況。
+
+#### 4. 紀錄庫：避免忘記取消上一家的勾選
+* 新增「✕ 取消全部勾選」按鈕；勾選跨多個機構或含不在目前畫面的舊勾選時，顯示橘色警示，並在匯出前跳確認視窗列出涉及機構。
+* 刻意**不採用「匯出後自動取消」**：常見流程是先匯出備份再批次刪除同一批，自動取消會讓使用者刪不到。
+
+#### 5. 同步
+* 合併 GitHub 上的登入錯誤訊息修正（9/4，依錯誤類型顯示原因並 trim email 空白）。
+
+> **驗證方式（日後修改匯出功能時請重做）**：用 `@babel/parser` 從 `index.html` 抽出真正的 `addLogoToWorkbook` / `doExportExcel`，餵入擬真資料產出 xlsx，再以 Excel COM 開檔、量測紙張／方向／縮放並 `ExportAsFixedFormat` 匯出 PDF 數頁數。
+
+---
+
 ## 🚀 部署與使用方式
 * **Web 線上版本**：[https://sd762.github.io/-/](https://sd762.github.io/-/)
 * **桌面端啟動**：執行 `python app.py` 即可開啟獨立 Chrome 應用程式視窗。
+
+---
+
+## 🔄 開發部署流程 (Deployment Workflow)
+
+> **原則：先在地端測試站驗證，確認無誤後再同步正式站**，避免測試期間影響線上使用者。
+
+### ⚠️ 必須同步的檔案（缺一不可）
+本專案自 2026-08 起將資料存取層拆分為獨立檔案，**每次同步都必須複製以下兩個檔案**：
+
+| 檔案 | 說明 |
+|---|---|
+| `index.html` | 主程式（React SPA） |
+| `dataStore.js` | 資料存取層（以 `<script>` 載入） |
+
+> 若只複製 `index.html` 而漏掉 `dataStore.js`，頁面會出現 `TypeError: window.createDataStore is not a function` 並完全無法開啟。
+
+### 步驟
+
+**1. 修改主檔**
+編輯專案根目錄的 `index.html`（必要時一併修改 `dataStore.js`）。
+
+**2. 同步到地端測試站並驗證**
+```powershell
+Copy-Item index.html test_local\index.html -Force
+Copy-Item dataStore.js test_local\dataStore.js -Force
+```
+啟動本機伺服器（於專案根目錄執行）：
+```bash
+python -m http.server 8800
+```
+瀏覽器開啟 `http://localhost:8800/test_local/index.html`，確認：
+* 頁面正常渲染（登入畫面出現、無紅色錯誤橫幅）
+* 開發者工具 Console 無錯誤
+* 本次修改的功能運作正常
+
+**3. 同步到正式站並推送**
+```powershell
+Copy-Item index.html temp_git_repo\-\index.html -Force
+Copy-Item dataStore.js temp_git_repo\-\dataStore.js -Force
+```
+```bash
+cd temp_git_repo/-
+git add index.html dataStore.js
+git commit -m "說明本次變更"
+git push origin main
+```
+
+**4. 確認上線**
+GitHub Pages（repo：`https://github.com/sd762/-.git`）約 1~2 分鐘後自動部署完成。
+使用者需按 **Ctrl+Shift+R** 強制重新整理以避開瀏覽器快取。
+
+### 檔案一致性檢查
+三處版本應完全相同，可用雜湊值快速比對：
+```powershell
+Get-FileHash index.html, test_local\index.html, temp_git_repo\-\index.html -Algorithm MD5 |
+    Format-Table Path, Hash -AutoSize
+```
