@@ -1678,7 +1678,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
             const [expandedFolders, setExpandedFolders] = useState(new Set());
             const [filterTplMainCat, setFilterTplMainCat] = useState('照護品質類技術考');
             const [filterTplSubCat, setFilterTplSubCat] = useState('護理照服類');
-            const [showAllTemplates, setShowAllTemplates] = useState(false); // 顯示全部項目（補考／加考）
+            const [onlyScheduled, setOnlyScheduled] = useState(false); // 只顯示當月表定項目（預設顯示全部，當月項目排最前面）
 
             // dataStore 需要「當下」的 session 而非建立當時的閉包值（token 每小時
             // 自動更新，session 物件會變成新的實體），因此用 ref 保持最新值。
@@ -3068,22 +3068,26 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                 return tpl.schedule || [];
             };
 
-            // 依「考核月份」列出當月表定的稽核項目；showAllTemplates 開啟時則列出全部（補考／加考用）
-            const availableTemplates = useMemo(() => {
-                if (showAllTemplates || !formData.date) return templates;
-                const [yy, mm] = String(formData.date).split('-');
-                const year = yy, month = parseInt(mm, 10);
-                if (!month) return templates;
-                return templates.filter(t => getEffectiveSchedule(t, year).includes(month));
-            }, [templates, formData.date, showAllTemplates, reportSettings]);
-
-            const scheduledCount = useMemo(() => {
-                if (!formData.date) return 0;
+            // 依「考核日期」的月份找出當月表定項目 id
+            const scheduledIds = useMemo(() => {
+                const ids = new Set();
+                if (!formData.date) return ids;
                 const [yy, mm] = String(formData.date).split('-');
                 const month = parseInt(mm, 10);
-                if (!month) return 0;
-                return templates.filter(t => getEffectiveSchedule(t, yy).includes(month)).length;
+                if (!month) return ids;
+                templates.forEach(t => { if (getEffectiveSchedule(t, yy).includes(month)) ids.add(t.id); });
+                return ids;
             }, [templates, formData.date, reportSettings]);
+
+            // 預設列出全部項目，當月表定的排在最前面；勾選「只顯示當月表定項目」時才收起其他
+            const availableTemplates = useMemo(() => {
+                if (scheduledIds.size === 0) return onlyScheduled ? [] : templates;
+                const first = templates.filter(t => scheduledIds.has(t.id));
+                if (onlyScheduled) return first;
+                return [...first, ...templates.filter(t => !scheduledIds.has(t.id))];
+            }, [templates, scheduledIds, onlyScheduled]);
+
+            const scheduledCount = scheduledIds.size;
 
             const handleDualScoreChange = (idx, field, value) => {
                 const nl = [...checklist]; nl[idx][field] = value;
@@ -4392,20 +4396,20 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                                 }} className="p-2 border border-blue-300 rounded-lg bg-white font-bold text-sm" />
                                                 <span className="text-[11px] text-slate-600">
                                                     {formData.date
-                                                        ? (showAllTemplates
-                                                            ? `已顯示全部項目（本月表定 ${scheduledCount} 項）`
-                                                            : (scheduledCount > 0
-                                                                ? `本月表定 ${scheduledCount} 項考核`
-                                                                : '本月無表定項目，請勾選右方「顯示全部項目」'))
+                                                        ? (scheduledCount > 0
+                                                            ? (onlyScheduled
+                                                                ? `僅顯示本月表定 ${scheduledCount} 項（其餘已收起）`
+                                                                : `本月表定 ${scheduledCount} 項，已排在清單最前面`)
+                                                            : '本月沒有表定項目，以下為全部項目')
                                                         : '請先選擇日期'}
                                                 </span>
                                                 <label className="ml-auto flex items-center gap-1.5 text-[11px] font-bold text-slate-600 cursor-pointer whitespace-nowrap">
-                                                    <input type="checkbox" checked={showAllTemplates} onChange={e => {
-                                                        setShowAllTemplates(e.target.checked);
+                                                    <input type="checkbox" checked={onlyScheduled} onChange={e => {
+                                                        setOnlyScheduled(e.target.checked);
                                                         setCurrentTemplateId(''); setChecklist([]);
                                                         setFormData(p => ({ ...p, auditName: '一般綜合稽核', score: '', score2: '', isDual: false, technique: '' }));
                                                     }} className="w-3.5 h-3.5" />
-                                                    顯示全部項目（補考／加考）
+                                                    只顯示當月表定項目
                                                 </label>
                                             </div>
                                             <div className="flex gap-2">
@@ -4422,7 +4426,16 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                                     } else { setChecklist([]); setFormData({ ...formData, auditName: '一般綜合稽核', score: '', score2: '', isDual: false }); }
                                                 }} className="flex-1 p-2 border border-blue-300 rounded-lg bg-white font-bold text-sm">
                                                     <option value="">-- 請選擇稽核項目 --</option>
-                                                    {availableTemplates.map(t => <option key={t.id} value={t.id}>{withStaffTag(t.name, t.targetStaff)}</option>)}
+                                                    {(() => {
+                                                        const opt = t => <option key={t.id} value={t.id}>{withStaffTag(t.name, t.targetStaff)}</option>;
+                                                        const sch = availableTemplates.filter(t => scheduledIds.has(t.id));
+                                                        const rest = availableTemplates.filter(t => !scheduledIds.has(t.id));
+                                                        if (sch.length === 0 || rest.length === 0) return availableTemplates.map(opt);
+                                                        return (<>
+                                                            <optgroup label={`📅 本月表定（${sch.length} 項）`}>{sch.map(opt)}</optgroup>
+                                                            <optgroup label={`其他項目（${rest.length} 項）`}>{rest.map(opt)}</optgroup>
+                                                        </>);
+                                                    })()}
                                                 </select>
                                                 {isAdmin && currentTemplateId && (
                                                     <button type="button" onClick={() => showConfirm('確定要刪除這份表單？', () => { setTemplates(p => p.filter(t => t.id !== currentTemplateId)); setCurrentTemplateId(''); setChecklist([]); })} className="bg-red-50 text-red-600 px-3 rounded-lg border border-red-200 shrink-0"><IconTrash /></button>
@@ -4852,7 +4865,7 @@ CREATE POLICY tpl_ov_read ON template_overrides FOR SELECT USING (true);`}</pre>
                                 <section>
                                     <h3 className="font-bold text-xl text-slate-800 mb-4 bg-blue-50 inline-block px-4 py-2 rounded-lg border-l-4 border-blue-600 flex items-center gap-2"><IconForm /> 一、現場考評與名單管理</h3>
                                     <div className="space-y-4 text-slate-700">
-                                        <p><strong>1. 先選日期，自動帶出當月表定項目 (2.2 新增)：</strong>在最上方先選擇「考核日期」，下方的稽核項目清單就只會列出<b>該月份表定要考核的項目</b>，並顯示「本月表定 N 項考核」，不必再回想當月要考什麼。每個項目名稱後會標註適用對象：<span className="text-blue-600 font-bold">(護理)、(照服) 或 (護理照服)</span>。若需要補考或加考非當月的項目，勾選右側的「<b>顯示全部項目（補考／加考）</b>」即可展開全部。表定月份來自「分析報表」的表定月設定與後台統一設定，三處一致。</p>
+                                        <p><strong>1. 先選日期，自動帶出當月表定項目 (2.2 新增)：</strong>在最上方先選擇「考核日期」，下方的稽核項目清單就會把<b>該月份表定要考核的項目</b>排在最前面，並顯示「本月表定 N 項」，不必再回想當月要考什麼。每個項目名稱後會標註適用對象：<span className="text-blue-600 font-bold">(護理)、(照服) 或 (護理照服)</span>。清單預設列出<b>全部項目</b>，並把<b>當月表定的項目排在最前面</b>（下拉選單分成「本月表定」與「其他項目」兩組），補考或加考時直接往下選即可；若想只看當月項目，勾選右側的「<b>只顯示當月表定項目</b>」。表定月份來自「分析報表」的表定月設定與後台統一設定，三處一致。</p>
                                         <p><strong>2. 人員名單共用與同步：</strong></p>
                                         <ul className="list-disc pl-8 space-y-1">
                                             <li>點擊「受評者」旁的 <span className="text-blue-600 font-bold">管理名單</span> 按鈕，可依機構分類新增或刪除人員。</li>
